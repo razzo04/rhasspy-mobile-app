@@ -1,15 +1,14 @@
-import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
-
- import 'package:http/http.dart';
+import 'package:dio/dio.dart';
 
 class RhasspyApi {
   String ip;
   int port;
   bool ssl;
   String baseUrl;
+  Dio dio;
 
   RhasspyApi(this.ip, this.port, this.ssl) {
     if (ssl == false) {
@@ -17,31 +16,29 @@ class RhasspyApi {
     } else {
       baseUrl = "https://" + ip + ":" + port.toString();
     }
+    dio = Dio(BaseOptions(baseUrl: baseUrl));
   }
 
   Future<String> getIntent() async {
-    var response = await get("/api/intents");
-    return response.body;
+    Response response = await dio.get("/api/intents");
+    return response.data.toString();
   }
   Future<String> speechToIntent(File file) async {
-    Uint8List dataFile =  file.readAsBytesSync();
-    Response response = await post(baseUrl+ "/api/speech-to-intent", body: dataFile);
-    return response.body;
+    Response response = await dio.post("/api/speech-to-intent", data: file.openRead());
+    return response.data.toString();
   }
 
   Future<String> speechToText(File file) async {
-    // var file = File(pathToFile).readAsStringSync(encoding: Encoding.getByName("ISO_8859-1:1987"));
-    Uint8List dataFile =  file.readAsBytesSync();
-    Response response = await post(baseUrl+ "/api/speech-to-text", body: dataFile);
-    return response.body; 
+    Response response = await dio.post("/api/speech-to-text", data: file.openRead());
+    return response.data;
   }
     Future<String> textToIntent(String text) async {
-    Response response = await post(baseUrl+ "/api/text-to-intent", body: text);
-    return response.body;
+    Response response = await dio.post("/api/text-to-intent", data: text);
+    return response.data.toString();
   }
   
   Future<Uint8List> textToSpeech(String text) async {
-    Response response = await post(baseUrl+ "/api/text-to-speech", body: text);
-    return response.bodyBytes;
+    Response response = await dio.post("/api/text-to-speech", data: text, options: Options(responseType: ResponseType.bytes));
+    return response.data;
   }
 }

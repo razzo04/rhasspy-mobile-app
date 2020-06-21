@@ -28,7 +28,7 @@ class _AppSettingsState extends State<AppSettings> {
               width: 10,
               height: 10,
             ),
-            Text("Rhasspy ip: ${rhasspyIp == null ? "Enter the value" : rhasspyIp}"),
+            Text("Rhasspy ip: ${rhasspyIp == null || rhasspyIp == "" ? "Enter the value" : rhasspyIp}"),
             TextField(
               controller: textEditingControllerRhasspyip,
               readOnly: false,
