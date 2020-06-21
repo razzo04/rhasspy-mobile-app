@@ -18,7 +18,21 @@ class RhasspyApi {
     }
     dio = Dio(BaseOptions(baseUrl: baseUrl));
   }
-
+  /// check if it is possible to establish a connection with rhasspy. 
+  /// If it is not possible return false.
+  Future<bool> checkConnection() async {
+    try {
+      // Recreate the object to change the timeout parameters 
+      Dio dio = Dio(BaseOptions(baseUrl: baseUrl,connectTimeout: 1000, receiveTimeout: 1000)); 
+      var response = await dio.get("/api/intents");
+      if(response.statusCode == 200){
+        return true;
+      }
+    } on DioError catch (_) {
+      return false;
+    }
+    return true;
+  }
   Future<String> getIntent() async {
     Response response = await dio.get("/api/intents");
     return response.data.toString();

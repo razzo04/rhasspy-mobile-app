@@ -30,6 +30,7 @@ dependencies:
   file_picker: ^1.11.0+3  
   audioplayers: ^0.15.1
   dio: ^3.0.9
+  flushbar: ^1.10.4
 
 
   # The following adds the Cupertino Icons font to your application.
