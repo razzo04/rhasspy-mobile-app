@@ -203,7 +203,7 @@ class _HomePageState extends State<HomePage> {
       if (prefs.containsKey("Rhasspyip") && prefs.getString("Rhasspyip").isNotEmpty) {
         String ip = prefs.getString("Rhasspyip").split(":").first;
         int port = int.parse(prefs.getString("Rhasspyip").split(":").last);
-        rhasspy = RhasspyApi(ip, port, false);
+        rhasspy = RhasspyApi(ip, port, prefs.getBool("SSL") ?? false, pemCertificate: prefs.getString("PEMCertificate"));
       }
     });
   }

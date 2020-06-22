@@ -10,6 +10,7 @@ This is a simple mobile app that interfaces with rhasspy.
   - Text to speak
   - Speech to text
   - ability to transcribe audio
+  - Ssl connection and possibility to set self-signed certificates
 
 # Getting Started
 
@@ -35,6 +36,5 @@ flutter build ios
 # TODO 
 
  - Wake word
- - Ssl for rest api 
  - Intent display
  - mqtt and hermes
