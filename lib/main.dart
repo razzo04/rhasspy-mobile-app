@@ -13,17 +13,18 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'Rhasspy mobile app',
-      onGenerateRoute: (RouteSettings settings){
+      onGenerateRoute: (RouteSettings settings) {
         var screen;
         switch (settings.name) {
           case HomePage.routeName:
-          screen = HomePage();
-          break;
+            screen = HomePage();
+            break;
           case AppSettings.routeName:
-          screen = AppSettings();
-          break;
+            screen = AppSettings();
+            break;
         }
-        return MaterialPageRoute(builder: (context) => screen, settings: settings);
+        return MaterialPageRoute(
+            builder: (context) => screen, settings: settings);
       },
       theme: ThemeData(
         primarySwatch: Colors.blue,
@@ -33,5 +34,3 @@ class MyApp extends StatelessWidget {
     );
   }
 }
-
-
