@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 import 'package:mqtt_client/mqtt_client.dart';
 import 'package:mqtt_client/mqtt_server_client.dart';
-import 'package:rhasspy_mobile_app/utilits/HermesTextCaptured.dart';
+import 'package:rhasspy_mobile_app/utilits/JsonHelperClass.dart';
 
 class RhasspyMqttApi {
   int port;
@@ -13,16 +13,22 @@ class RhasspyMqttApi {
   String siteId;
   MqttServerClient client;
   bool isConnected = false;
-  Function(String) onReceivedIntent;
-  Function(HermesTextCaptured) onReceivedText;
-  Function(List<int>) onReceivedAudio;
-
+  String _currentSessionId;
+  void Function(HermesNluIntentParsed) onReceivedIntent;
+  void Function(HermesTextCaptured) onReceivedText;
+  void Function(List<int>) onReceivedAudio;
+  void Function(HermesEndSession) onReceivedEndSession;
+  void Function(HermesContinueSession) onReceivedContinueSession;
+  List<int> Function() captureAudio;
   RhasspyMqttApi(
       this.host, this.port, this.ssl, this.username, this.password, this.siteId,
-      {this.onReceivedIntent, this.onReceivedText, this.onReceivedAudio}) {
+      {this.onReceivedIntent,
+      this.onReceivedText,
+      this.onReceivedAudio,
+      this.onReceivedEndSession,
+      this.onReceivedContinueSession}) {
     client = MqttServerClient.withPort(host, siteId, port);
     client.keepAlivePeriod = 20;
-    // client.autoReconnect = true;
     client.onConnected = onConnected;
     client.onSubscribed = onSubscribed;
     client.onDisconnected = onDisconnected;
@@ -31,7 +37,7 @@ class RhasspyMqttApi {
     final connMess = MqttConnectMessage()
         .withClientIdentifier(siteId)
         .keepAliveFor(20)
-        .startClean() 
+        .startClean()
         .withWillQos(MqttQos.atLeastOnce);
     client.connectionMessage = connMess;
   }
@@ -42,8 +48,7 @@ class RhasspyMqttApi {
   Future<int> connect() async {
     try {
       await client.connect(username, password);
-
-    }on Exception {
+    } on Exception {
       isConnected = false;
       client.disconnect();
       return 1;
@@ -55,6 +60,12 @@ class RhasspyMqttApi {
       client.subscribe("hermes/audioServer/${siteId.trim()}/playBytes/#",
           MqttQos.atLeastOnce);
       client.subscribe("hermes/asr/textCaptured", MqttQos.atLeastOnce);
+      client.subscribe(
+          "hermes/dialogueManager/endSession", MqttQos.atLeastOnce);
+      client.subscribe("hermes/nlu/intentParsed", MqttQos.atLeastOnce);
+      client.subscribe(
+          "hermes/dialogueManager/continueSession", MqttQos.atLeastOnce);
+
       return 0;
     } else {
       /// Use status here rather than state if you also want the broker return code.
@@ -109,7 +120,10 @@ class RhasspyMqttApi {
         json.encode({"siteId": "$siteId", "sessionId": "$sessionId"}));
   }
 
-  speechTotext(Uint8List dataAudio) {
+  void hermesSessionStart() {
+    // _publishString("hermes/dialogueManager/startSession", json.encode())
+  }
+  void speechTotext(Uint8List dataAudio) {
     hermesAsrToggleOn();
     hermesAsrStartListening();
     publishAudioFrame(dataAudio);
@@ -135,7 +149,30 @@ class RhasspyMqttApi {
         }));
   }
 
-  textToSpeech(String text) {
+  void hermesNluQuery(String input,
+      {String id,
+      List<String> intentFilter,
+      String sessionId,
+      String wakeWordId,
+      String lang}) {
+    _publishString(
+        "hermes/nlu/query",
+        json.encode({
+          "input": input,
+          "siteId": siteId,
+          "id": id,
+          "intentFilter": intentFilter,
+          "sessionId": sessionId,
+          "wakewordId": wakeWordId,
+          "lang": lang
+        }));
+  }
+
+  void textToIntent(String text) {
+    hermesNluQuery(text, sessionId: generateId());
+  }
+
+  void textToSpeech(String text) {
     hermesTtsSay(text);
   }
 
@@ -153,25 +190,57 @@ class RhasspyMqttApi {
       HermesTextCaptured textCaptured = HermesTextCaptured.fromJson(json.decode(
           MqttPublishPayload.bytesToStringAsString(
               recMessPayload.payload.message)));
-      if(textCaptured.siteId == siteId) onReceivedText(textCaptured);
+      if (textCaptured.siteId == siteId) onReceivedText(textCaptured);
+    }
+    if (lastMessage.topic == "hermes/dialogueManager/endSession") {
+      final MqttPublishMessage recMessPayload = lastMessage.payload;
+      HermesEndSession endSession = HermesEndSession.fromJson(json.decode(
+          MqttPublishPayload.bytesToStringAsString(
+              recMessPayload.payload.message)));
+
+      if (endSession.siteId == siteId) {
+        textToSpeech(endSession.text);
+        onReceivedEndSession(endSession);
+      }
+    }
+    if (lastMessage.topic == "hermes/dialogueManager/continueSession") {
+      final MqttPublishMessage recMessPayload = lastMessage.payload;
+      HermesContinueSession continueSession = HermesContinueSession.fromJson(
+          json.decode(MqttPublishPayload.bytesToStringAsString(
+              recMessPayload.payload.message)));
+
+      if (continueSession.siteId == siteId) {
+        textToSpeech(continueSession.text);
+        onReceivedContinueSession(continueSession);
+      }
+    }
+    if (lastMessage.topic == "hermes/nlu/intentParsed") {
+      final MqttPublishMessage recMessPayload = lastMessage.payload;
+      HermesNluIntentParsed intentParsed = HermesNluIntentParsed.fromJson(
+          json.decode(MqttPublishPayload.bytesToStringAsString(
+              recMessPayload.payload.message)));
+      if (intentParsed.siteId == siteId) onReceivedIntent(intentParsed);
     }
   }
 
-void onDisconnected() {
+  void onDisconnected() {
     print("Disconetted");
     isConnected = false;
   }
 
-void onConnected() {
+  void onConnected() {
     print("Conneted");
     isConnected = true;
   }
 
-void onSubscribed(String topic) {
-    
+void disconnect(){
+  client.disconnect();
+}
+  void onSubscribed(String topic) {
+
   }
 
-void pong() {
+  void pong() {
     print("pong");
   }
 }

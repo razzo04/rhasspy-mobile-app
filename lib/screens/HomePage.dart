@@ -42,7 +42,8 @@ class _HomePageState extends State<HomePage> {
           IconButton(
             icon: Icon(Icons.settings),
             onPressed: () {
-              Navigator.pushNamed(context, AppSettings.routeName).then((value) => _setupMqtt());
+              Navigator.pushNamed(context, AppSettings.routeName)
+                  .then((value) => _setupMqtt());
             },
           )
         ],
@@ -56,7 +57,8 @@ class _HomePageState extends State<HomePage> {
                 color: micColor,
                 icon: Icon(Icons.mic),
                 onPressed: () async {
-                  if (!await _checkRhasspyIsReady()) {
+                  if (!await _checkRhasspyIsReady() &&
+                      (!(await _prefs).getBool("MQTT"))) {
                     return;
                   }
                   if (await Permission.microphone.request().isGranted) {
@@ -65,25 +67,7 @@ class _HomePageState extends State<HomePage> {
                     });
                     if (statusRecording == RecordingStatus.Unset ||
                         statusRecording == RecordingStatus.Stopped) {
-                      Directory appDocDirectory =
-                          await getApplicationDocumentsDirectory();
-                      String pathFile =
-                          appDocDirectory.path + "/speech_to_text.wav";
-                      File audioFile = File(pathFile);
-                      if (audioFile.existsSync()) audioFile.deleteSync();
-                      recorder = FlutterAudioRecorder(pathFile,
-                          audioFormat: AudioFormat.WAV);
-                      await recorder.initialized;
-                      await recorder.start();
-                      Recording current = await recorder.current(channel: 0);
-                      statusRecording = current.status;
-                      Timer.periodic(Duration(milliseconds: 50),
-                          (Timer t) async {
-                        Recording current = await recorder.current(channel: 0);
-                        if (current.status == RecordingStatus.Stopped) {
-                          t.cancel();
-                        }
-                      });
+                      _starRecording();
                     } else {
                       setState(() {
                         micColor = Colors.black;
@@ -150,7 +134,11 @@ class _HomePageState extends State<HomePage> {
                         AudioPlayer audioPlayer = AudioPlayer();
                         audioPlayer.play(file.path, isLocal: true);
                       } else {
-                        rhasspyMqtt.textToSpeech(textEditingController.text);
+                        if (handle) {
+                          rhasspyMqtt.textToIntent(textEditingController.text);
+                        } else {
+                          rhasspyMqtt.textToSpeech(textEditingController.text);
+                        }
                       }
                     })
               ],
@@ -202,6 +190,24 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  void _starRecording() async {
+    Directory appDocDirectory = await getApplicationDocumentsDirectory();
+    String pathFile = appDocDirectory.path + "/speech_to_text.wav";
+    File audioFile = File(pathFile);
+    if (audioFile.existsSync()) audioFile.deleteSync();
+    recorder = FlutterAudioRecorder(pathFile, audioFormat: AudioFormat.WAV);
+    await recorder.initialized;
+    await recorder.start();
+    Recording current = await recorder.current(channel: 0);
+    statusRecording = current.status;
+    Timer.periodic(Duration(milliseconds: 50), (Timer t) async {
+      Recording current = await recorder.current(channel: 0);
+      if (current.status == RecordingStatus.Stopped) {
+        t.cancel();
+      }
+    });
+  }
+
   Future<bool> _checkRhasspyIsReady() async {
     if (!(await _prefs).containsKey("Rhasspyip") ||
         (await _prefs).getString("Rhasspyip") == "") {
@@ -236,36 +242,58 @@ class _HomePageState extends State<HomePage> {
     _setupMqtt();
     super.initState();
   }
+
   @override
-  void dispose() { 
+  void dispose() {
+    rhasspyMqtt.disconnect();
     rhasspyMqtt = null;
     super.dispose();
   }
 
-  Future _setupMqtt() async {
+  void _setupMqtt() async {
     _prefs.then((SharedPreferences prefs) {
       if (!prefs.containsKey("MQTTONLY")) {
         prefs.setBool("MQTTONLY", false);
       }
       if (prefs.getBool("MQTT") != null && prefs.getBool("MQTT")) {
         rhasspyMqtt = RhasspyMqttApi(
-            prefs.getString("MQTTHOST"),
-            prefs.getInt("MQTTPORT"),
-            false,
-            prefs.getString("MQTTUSERNAME"),
-            prefs.getString("MQTTPASSWORD"),
-            prefs.getString("SITEID"), onReceivedAudio: (value) async {
-          String filePath = (await getApplicationDocumentsDirectory()).path +
-              "text_to_speech_mqtt.wav";
-          File file = File(filePath);
-          file.writeAsBytesSync(value);
-          AudioPlayer audioPlayer = AudioPlayer();
-          audioPlayer.play(filePath, isLocal: true);
-        }, onReceivedText: (textCapture) {
-          setState(() {
-            textEditingController.text = textCapture.text;
-          });
-        });
+          prefs.getString("MQTTHOST"),
+          prefs.getInt("MQTTPORT"),
+          false,
+          prefs.getString("MQTTUSERNAME"),
+          prefs.getString("MQTTPASSWORD"),
+          prefs.getString("SITEID"),
+          onReceivedAudio: (value) async {
+            String filePath = (await getApplicationDocumentsDirectory()).path +
+                "text_to_speech_mqtt.wav";
+            File file = File(filePath);
+            file.writeAsBytes(value).then((value) {
+              AudioPlayer audioPlayer = AudioPlayer();
+              audioPlayer.play(filePath, isLocal: true);
+            });
+          },
+          onReceivedText: (textCapture) {
+            setState(() {
+              textEditingController.text = textCapture.text;
+            });
+            if (handle) {
+              rhasspyMqtt.textToIntent(textCapture.text);
+            }
+          },
+          onReceivedIntent: (intentParsed) {
+            print("Recognized intent: ${intentParsed.intent.intentName}");
+          },
+          onReceivedEndSession: (endSession) {
+            print(endSession.text);
+          },
+          onReceivedContinueSession: (continueSession) {
+            print(continueSession.text);
+            _starRecording();
+            setState(() {
+              micColor = Colors.red;
+            });
+          },
+        );
         rhasspyMqtt.connect();
       }
     });

@@ -11,6 +11,7 @@ This is a simple mobile app that interfaces with rhasspy.
   - Speech to text
   - ability to transcribe audio
   - Ssl connection and possibility to set self-signed certificates
+  - Support Hermes protocol
 
 # Getting Started
 
@@ -37,4 +38,5 @@ flutter build ios
 
  - Wake word
  - Intent display
- - mqtt and hermes
+ - tls for mqtt
+ - add android widget

@@ -21,6 +21,7 @@ class _AppSettingsState extends State<AppSettings> {
   SharedPreferences prefs;
   String rhasspyIp;
   RhasspyMqttApi rhasspyMqtt;
+  final _formKey = GlobalKey<FormState>();
 
   @override
   Widget build(BuildContext context) {
@@ -137,131 +138,152 @@ class _AppSettingsState extends State<AppSettings> {
   Widget _buildMqttWidget() {
     if (prefs != null) {
       if (prefs.getBool("MQTT") != null && prefs.getBool("MQTT")) {
-        return Column(
-          children: <Widget>[
-            SwitchListTile.adaptive(
-              value: prefs != null ? prefs.getBool("MQTT") ?? false : false,
-              onChanged: (bool value) {
-                setState(() {
-                  prefs.setBool("MQTT", value);
-                });
-              },
-              title: Text("Enable MQTT"),
-              subtitle: Text("enable mqtt to get all features"),
-            ),
-            Padding(
-              padding: const EdgeInsets.only(left: 16),
-              child: TextFormField(
-                initialValue: prefs.getString("MQTTHOST"),
-                onFieldSubmitted: (value) {
-                  prefs.setString("MQTTHOST", value);
+        return Form(
+          key: _formKey,
+          child: Column(
+            children: <Widget>[
+              SwitchListTile.adaptive(
+                value: prefs != null ? prefs.getBool("MQTT") ?? false : false,
+                onChanged: (bool value) {
+                  setState(() {
+                    prefs.setBool("MQTT", value);
+                  });
                 },
-                decoration: InputDecoration(
-                  labelText: "Host",
+                title: Text("Enable MQTT"),
+                subtitle: Text("enable mqtt to get all features"),
+              ),
+              Padding(
+                padding: const EdgeInsets.only(left: 16),
+                child: TextFormField(
+                  initialValue: prefs.getString("MQTTHOST"),
+                  onSaved: (value) {
+                    prefs.setString("MQTTHOST", value);
+                  },
+                  onFieldSubmitted: (value) {
+                    prefs.setString("MQTTHOST", value);
+                  },
+                  decoration: InputDecoration(
+                    labelText: "Host",
+                  ),
                 ),
               ),
-            ),
-            Padding(
-              padding: const EdgeInsets.only(left: 16),
-              child: TextFormField(
-                keyboardType: TextInputType.numberWithOptions(
-                    signed: false, decimal: false),
-                initialValue: prefs.getInt("MQTTPORT") != null
-                    ? prefs.getInt("MQTTPORT").toString()
-                    : "",
-                autovalidate: true,
-                validator: (value) {
-                  if (value.contains(",") || value.contains(".")) {
-                    return "Only number";
+              Padding(
+                padding: const EdgeInsets.only(left: 16),
+                child: TextFormField(
+                  keyboardType: TextInputType.numberWithOptions(
+                      signed: false, decimal: false),
+                  initialValue: prefs.getInt("MQTTPORT") != null
+                      ? prefs.getInt("MQTTPORT").toString()
+                      : "",
+                  autovalidate: true,
+                  onSaved: (value) {
+                    prefs.setInt("MQTTPORT", int.parse(value));
+                  },
+                  validator: (value) {
+                    if (value.contains(",") || value.contains(".")) {
+                      return "Only number";
+                    }
+                    return null;
+                  },
+                  onFieldSubmitted: (value) {
+                    prefs.setInt("MQTTPORT", int.parse(value));
+                  },
+                  decoration: InputDecoration(
+                    labelText: "Port",
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.only(left: 16),
+                child: TextFormField(
+                  onSaved: (value) {
+                    prefs.setString("MQTTUSERNAME", value.trim());
+                  },
+                  initialValue: prefs.getString("MQTTUSERNAME"),
+                  onFieldSubmitted: (value) {
+                    prefs.setString("MQTTUSERNAME", value.trim());
+                  },
+                  decoration: InputDecoration(
+                    labelText: "Username",
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.only(left: 16),
+                child: TextFormField(
+                  onSaved: (value) {
+                    prefs.setString("MQTTPASSWORD", value.trim());
+                  },
+                  initialValue: prefs.getString("MQTTPASSWORD"),
+                  obscureText: true,
+                  onFieldSubmitted: (value) {
+                    prefs.setString("MQTTPASSWORD", value.trim());
+                  },
+                  decoration: InputDecoration(
+                    labelText: "Password",
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.only(left: 16),
+                child: TextFormField(
+                  onSaved: (value) {
+                    prefs.setString("SITEID", value.trim());
+                  },
+                  initialValue: prefs.getString("SITEID"),
+                  onFieldSubmitted: (value) {
+                    prefs.setString("SITEID", value.trim());
+                  },
+                  decoration: InputDecoration(
+                    labelText: "Siteid",
+                  ),
+                ),
+              ),
+              SwitchListTile.adaptive(
+                value:
+                    prefs != null ? prefs.getBool("MQTTONLY") ?? false : false,
+                onChanged: (bool value) {
+                  setState(() {
+                    prefs.setBool("MQTTONLY", value);
+                  });
+                },
+                title: Text("Only MQTT"),
+                subtitle: Text("Use only mqtt"),
+              ),
+              FlatButton.icon(
+                onPressed: () async {
+                  _formKey.currentState.save();
+                  print("Check conessione");
+                  rhasspyMqtt = RhasspyMqttApi(
+                    prefs.getString("MQTTHOST"),
+                    prefs.getInt("MQTTPORT"),
+                    false,
+                    prefs.getString("MQTTUSERNAME"),
+                    prefs.getString("MQTTPASSWORD"),
+                    prefs.getString("SITEID"),
+                  );
+                  int result = await rhasspyMqtt.connect();
+                  if (result == 0) {
+                    FlushbarHelper.createSuccess(
+                            message: "connection established with the broker")
+                        .show(context);
                   }
-                  return null;
+                  if (result == 1) {
+                    FlushbarHelper.createError(message: "failed to connect")
+                        .show(context);
+                  }
+                  if (result == 2) {
+                    FlushbarHelper.createError(message: "incorrect credentials")
+                        .show(context);
+                  }
+                  rhasspyMqtt.disconnect();
+                  rhasspyMqtt = null;
                 },
-                onFieldSubmitted: (value) {
-                  prefs.setInt("MQTTPORT", int.parse(value));
-                },
-                decoration: InputDecoration(
-                  labelText: "Port",
-                ),
+                icon: Icon(Icons.check),
+                label: Text("Check connection"),
               ),
-            ),
-            Padding(
-              padding: const EdgeInsets.only(left: 16),
-              child: TextFormField(
-                initialValue: prefs.getString("MQTTUSERNAME"),
-                onFieldSubmitted: (value) {
-                  prefs.setString("MQTTUSERNAME", value.trim());
-                },
-                decoration: InputDecoration(
-                  labelText: "Username",
-                ),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.only(left: 16),
-              child: TextFormField(
-                initialValue: prefs.getString("MQTTPASSWORD"),
-                obscureText: true,
-                onFieldSubmitted: (value) {
-                  print(value);
-                  prefs.setString("MQTTPASSWORD", value.trim());
-                },
-                decoration: InputDecoration(
-                  labelText: "Password",
-                ),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.only(left: 16),
-              child: TextFormField(
-                initialValue: prefs.getString("SITEID"),
-                onFieldSubmitted: (value) {
-                  prefs.setString("SITEID", value.trim());
-                },
-                decoration: InputDecoration(
-                  labelText: "Siteid",
-                ),
-              ),
-            ),
-            SwitchListTile.adaptive(
-              value: prefs != null ? prefs.getBool("MQTTONLY") ?? false : false,
-              onChanged: (bool value) {
-                setState(() {
-                  prefs.setBool("MQTTONLY", value);
-                });
-              },
-              title: Text("Only MQTT"),
-              subtitle: Text("Use only mqtt"),
-            ),
-            FlatButton.icon(
-              onPressed: () async {
-                print("Check conessione");
-                rhasspyMqtt = RhasspyMqttApi(
-                  prefs.getString("MQTTHOST"),
-                  prefs.getInt("MQTTPORT"),
-                  false,
-                  prefs.getString("MQTTUSERNAME"),
-                  prefs.getString("MQTTPASSWORD"),
-                  prefs.getString("SITEID"),
-                );
-                int result = await rhasspyMqtt.connect();
-                if (result == 0) {
-                  FlushbarHelper.createSuccess(
-                          message: "connection established with the broker")
-                      .show(context);
-                }
-                if (result == 1) {
-                  FlushbarHelper.createError(message: "failed to connect")
-                      .show(context);
-                }
-                if (result == 2) {
-                  FlushbarHelper.createError(message: "incorrect credentials")
-                      .show(context);
-                }
-              },
-              icon: Icon(Icons.check),
-              label: Text("Check connection"),
-            ),
-          ],
+            ],
+          ),
         );
       }
       return SwitchListTile.adaptive(
@@ -276,9 +298,9 @@ class _AppSettingsState extends State<AppSettings> {
       );
     }
   }
+
   @override
   void dispose() {
-    rhasspyMqtt = null;
     super.dispose();
   }
 }

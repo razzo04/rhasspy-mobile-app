@@ -32,9 +32,7 @@ dependencies:
   dio: ^3.0.9
   flushbar: ^1.10.4
   mqtt_client: ^7.2.1
-  json_annotation: ^3.0.1
   provider: ^4.1.3
-
 
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
@@ -43,9 +41,6 @@ dependencies:
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  json_serializable: ^3.3.0
-  build_runner: ^1.10.0  
-
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
 
