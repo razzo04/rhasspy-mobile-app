@@ -20,12 +20,12 @@ class HermesTextCaptured {
     if(json['likelihood'] is double){
       likelihood = json['likelihood'];
     } else {
-      likelihood = double.parse(json['likelihood']);
+      likelihood = double.parse(json['likelihood'].toString());
     }
     if (json['seconds'] is double){
       seconds = json['seconds'];
     } else {
-      seconds = double.parse(json['seconds']);
+      seconds = double.parse(json['seconds'].toString());
     }
     
     siteId = json['siteId'];

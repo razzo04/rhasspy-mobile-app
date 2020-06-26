@@ -28,6 +28,7 @@ class _HomePageState extends State<HomePage> {
   bool handle = true;
   RhasspyApi rhasspy;
   RhasspyMqttApi rhasspyMqtt;
+  AudioPlayer audioPlayer = AudioPlayer();
   Future<SharedPreferences> _prefs = SharedPreferences.getInstance();
   var _scaffoldKey = GlobalKey<ScaffoldState>();
 
@@ -84,8 +85,9 @@ class _HomePageState extends State<HomePage> {
                           textEditingController.text = text;
                         });
                       } else {
-                        rhasspyMqtt
-                            .speechTotext(File(result.path).readAsBytesSync());
+                        rhasspyMqtt.speechTotext(
+                            File(result.path).readAsBytesSync(),
+                            cleanSession: !handle);
                       }
                     }
                   } else {}
@@ -131,7 +133,6 @@ class _HomePageState extends State<HomePage> {
                                 "text_to_speech.wav";
                         File file = File(filePath);
                         file.writeAsBytesSync(audioData);
-                        AudioPlayer audioPlayer = AudioPlayer();
                         audioPlayer.play(file.path, isLocal: true);
                       } else {
                         if (handle) {
@@ -191,6 +192,7 @@ class _HomePageState extends State<HomePage> {
   }
 
   void _starRecording() async {
+    /// wait until the audio is played entirely before start recording
     Directory appDocDirectory = await getApplicationDocumentsDirectory();
     String pathFile = appDocDirectory.path + "/speech_to_text.wav";
     File audioFile = File(pathFile);
@@ -268,8 +270,13 @@ class _HomePageState extends State<HomePage> {
                 "text_to_speech_mqtt.wav";
             File file = File(filePath);
             file.writeAsBytes(value).then((value) {
-              AudioPlayer audioPlayer = AudioPlayer();
-              audioPlayer.play(filePath, isLocal: true);
+              if (audioPlayer.state == AudioPlayerState.PLAYING) {
+                /// wait until the audio is played entirely before playing another audio
+                audioPlayer.onPlayerCompletion.first
+                    .then((value) => audioPlayer.play(filePath, isLocal: true));
+              } else {
+                audioPlayer.play(filePath, isLocal: true);
+              }
             });
           },
           onReceivedText: (textCapture) {
@@ -277,7 +284,7 @@ class _HomePageState extends State<HomePage> {
               textEditingController.text = textCapture.text;
             });
             if (handle) {
-              rhasspyMqtt.textToIntent(textCapture.text);
+              rhasspyMqtt.textToIntent(textCapture.text, handle: handle);
             }
           },
           onReceivedIntent: (intentParsed) {
@@ -288,9 +295,13 @@ class _HomePageState extends State<HomePage> {
           },
           onReceivedContinueSession: (continueSession) {
             print(continueSession.text);
-            _starRecording();
-            setState(() {
-              micColor = Colors.red;
+
+            /// wait for the audio to be played after starting to listen
+            audioPlayer.onPlayerCompletion.first.then((value) {
+              _starRecording();
+              setState(() {
+                micColor = Colors.red;
+              });
             });
           },
         );
