@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:audioplayers/audioplayers.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:flushbar/flushbar_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_audio_recorder/flutter_audio_recorder.dart';
 import 'package:path_provider/path_provider.dart';
@@ -85,6 +86,12 @@ class _HomePageState extends State<HomePage> {
                           textEditingController.text = text;
                         });
                       } else {
+                        if (!rhasspyMqtt.isConnected) {
+                          FlushbarHelper.createError(
+                                  message: "Connect before use")
+                              .show(context);
+                          return;
+                        }
                         rhasspyMqtt.speechTotext(
                             File(result.path).readAsBytesSync(),
                             cleanSession: !handle);
@@ -135,6 +142,12 @@ class _HomePageState extends State<HomePage> {
                         file.writeAsBytesSync(audioData);
                         audioPlayer.play(file.path, isLocal: true);
                       } else {
+                        if (!rhasspyMqtt.isConnected) {
+                          FlushbarHelper.createError(
+                                  message: "Connect before use")
+                              .show(context);
+                          return;
+                        }
                         if (handle) {
                           rhasspyMqtt.textToIntent(textEditingController.text);
                         } else {
@@ -156,17 +169,27 @@ class _HomePageState extends State<HomePage> {
                         var file =
                             await FilePicker.getFile(type: FileType.audio);
                         if (file != null) {
-                          rhasspy.speechToText(file).then(
-                                (value) => setState(
-                                  () {
-                                    textEditingController.value =
-                                        TextEditingValue(text: value);
-                                    if (handle) {
-                                      rhasspy.textToIntent(value);
-                                    }
-                                  },
-                                ),
-                              );
+                          if (!(await _prefs).getBool("MQTTONLY")) {
+                            rhasspy.speechToText(file).then(
+                                  (value) => setState(
+                                    () {
+                                      textEditingController.value =
+                                          TextEditingValue(text: value);
+                                      if (handle) {
+                                        rhasspy.textToIntent(value);
+                                      }
+                                    },
+                                  ),
+                                );
+                          } else {
+                            if (!rhasspyMqtt.isConnected) {
+                              FlushbarHelper.createError(
+                                      message: "Connect before use")
+                                  .show(context);
+                              return;
+                            }
+                            rhasspyMqtt.speechTotext(file.readAsBytesSync());
+                          }
                         }
                       }
                     },
@@ -192,28 +215,31 @@ class _HomePageState extends State<HomePage> {
   }
 
   void _starRecording() async {
-    /// wait until the audio is played entirely before start recording
-    Directory appDocDirectory = await getApplicationDocumentsDirectory();
-    String pathFile = appDocDirectory.path + "/speech_to_text.wav";
-    File audioFile = File(pathFile);
-    if (audioFile.existsSync()) audioFile.deleteSync();
-    recorder = FlutterAudioRecorder(pathFile, audioFormat: AudioFormat.WAV);
-    await recorder.initialized;
-    await recorder.start();
-    Recording current = await recorder.current(channel: 0);
-    statusRecording = current.status;
-    Timer.periodic(Duration(milliseconds: 50), (Timer t) async {
+    if (await Permission.microphone.request().isGranted) {
+      Directory appDocDirectory = await getApplicationDocumentsDirectory();
+      String pathFile = appDocDirectory.path + "/speech_to_text.wav";
+      File audioFile = File(pathFile);
+      if (audioFile.existsSync()) audioFile.deleteSync();
+      recorder = FlutterAudioRecorder(pathFile, audioFormat: AudioFormat.WAV);
+      await recorder.initialized;
+      await recorder.start();
       Recording current = await recorder.current(channel: 0);
-      if (current.status == RecordingStatus.Stopped) {
-        t.cancel();
-      }
-    });
+      statusRecording = current.status;
+      Timer.periodic(Duration(milliseconds: 50), (Timer t) async {
+        Recording current = await recorder.current(channel: 0);
+        if (current.status == RecordingStatus.Stopped) {
+          t.cancel();
+        }
+      });
+    }
   }
 
   Future<bool> _checkRhasspyIsReady() async {
     if (!(await _prefs).containsKey("Rhasspyip") ||
         (await _prefs).getString("Rhasspyip") == "") {
-      _snowSnackBar(context, "please insert rhasspy server ip first");
+      FlushbarHelper.createInformation(
+              message: "please insert rhasspy server ip first")
+          .show(context);
       return false;
     }
     return true;
@@ -231,14 +257,6 @@ class _HomePageState extends State<HomePage> {
     });
   }
 
-  void _snowSnackBar(BuildContext context, String message) {
-    SnackBar snackBar = SnackBar(
-      content: Text(message),
-      duration: Duration(seconds: 2),
-    );
-    _scaffoldKey.currentState.showSnackBar(snackBar);
-  }
-
   @override
   void initState() {
     _setupMqtt();
@@ -253,7 +271,7 @@ class _HomePageState extends State<HomePage> {
   }
 
   void _setupMqtt() async {
-    _prefs.then((SharedPreferences prefs) {
+    _prefs.then((SharedPreferences prefs) async {
       if (!prefs.containsKey("MQTTONLY")) {
         prefs.setBool("MQTTONLY", false);
       }
@@ -304,8 +322,21 @@ class _HomePageState extends State<HomePage> {
               });
             });
           },
+          onTimeoutIntentHandle: (intentParsed) {
+            FlushbarHelper.createError(message: "no one managed the intent: ${intentParsed.intent.intentName}").show(context);
+            print("Impossible hadling intent: ${intentParsed.intent.intentName}");
+          },
         );
-        rhasspyMqtt.connect();
+        rhasspyMqtt.connect().then((result) {
+          if (result == 1) {
+            FlushbarHelper.createError(message: "failed to connect")
+                .show(context);
+          }
+          if (result == 2) {
+            FlushbarHelper.createError(message: "incorrect credentials")
+                .show(context);
+          }
+        });
       }
     });
   }

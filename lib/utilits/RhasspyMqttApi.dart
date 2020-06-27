@@ -14,21 +14,29 @@ class RhasspyMqttApi {
   String siteId;
   MqttServerClient client;
   bool isConnected = false;
+  bool _intentHandled = false;
+  /// the time to wait before calling onTimeoutIntentHandle 
+  /// if endSession or continueSession is not received
+  int timeOutIntent; 
   String _currentSessionId;
   void Function(HermesNluIntentParsed) onReceivedIntent;
   void Function(HermesTextCaptured) onReceivedText;
   void Function(List<int>) onReceivedAudio;
   void Function(HermesEndSession) onReceivedEndSession;
   void Function(HermesContinueSession) onReceivedContinueSession;
+  void Function(HermesNluIntentParsed) onTimeoutIntentHandle;
   List<int> Function() captureAudio;
   RhasspyMqttApi(
       this.host, this.port, this.ssl, this.username, this.password, this.siteId,
-      {this.onReceivedIntent,
+      {this.timeOutIntent = 4,
+      this.onReceivedIntent,
       this.onReceivedText,
       this.onReceivedAudio,
       this.onReceivedEndSession,
-      this.onReceivedContinueSession}) {
-    client = MqttServerClient.withPort(host, siteId, port);
+      this.onReceivedContinueSession,
+      this.onTimeoutIntentHandle}) {
+    client =
+        MqttServerClient.withPort(host, siteId, port, maxConnectionAttempts: 1);
     client.keepAlivePeriod = 20;
     client.onConnected = onConnected;
     client.onSubscribed = onSubscribed;
@@ -48,11 +56,8 @@ class RhasspyMqttApi {
   /// 1 connection failed and 2 incorrect credentials.
   Future<int> connect() async {
     try {
-      await client.connect(username, password);
-    } on Exception {
-      isConnected = false;
-      client.disconnect();
-      return 1;
+      await client.connect(username, password).timeout(Duration(seconds: 4));
+    } catch (e) {
     }
     if (client.connectionStatus.state == MqttConnectionState.connected) {
       print('Mosquitto client connected');
@@ -66,10 +71,15 @@ class RhasspyMqttApi {
       client.subscribe("hermes/nlu/intentParsed", MqttQos.atLeastOnce);
       client.subscribe(
           "hermes/dialogueManager/continueSession", MqttQos.atLeastOnce);
-
       return 0;
+    } else if (client.connectionStatus.returnCode ==
+            MqttConnectReturnCode.badUsernameOrPassword ||
+        client.connectionStatus.returnCode ==
+            MqttConnectReturnCode.notAuthorized) {
+      client.disconnect();
+      isConnected = false;
+      return 2;
     } else {
-      /// Use status here rather than state if you also want the broker return code.
       client.disconnect();
       isConnected = false;
       return 1;
@@ -124,9 +134,10 @@ class RhasspyMqttApi {
   void hermesSessionStart() {
     // _publishString("hermes/dialogueManager/startSession", json.encode())
   }
-  /// the function prepare rhasspy to listen at voice command and 
+
+  /// the function prepare rhasspy to listen at voice command and
   /// then send [dataAudio] to hermes/audioServer/$siteId/audioFrame.
-  /// if [cleanSession] is true after the command stopListening 
+  /// if [cleanSession] is true after the command stopListening
   /// delete the sessionId.
   void speechTotext(Uint8List dataAudio, {bool cleanSession = true}) {
     if (_currentSessionId == null) _currentSessionId = generateId();
@@ -226,6 +237,7 @@ class RhasspyMqttApi {
               recMessPayload.payload.message)));
 
       if (endSession.siteId == siteId) {
+        _intentHandled = true;
         hermesTtsSay(endSession.text, sessionId: _currentSessionId);
         onReceivedEndSession(endSession);
         _currentSessionId = null;
@@ -238,6 +250,7 @@ class RhasspyMqttApi {
               recMessPayload.payload.message)));
 
       if (continueSession.siteId == siteId) {
+        _intentHandled = true;
         hermesTtsSay(continueSession.text, sessionId: _currentSessionId);
         onReceivedContinueSession(continueSession);
       }
@@ -248,6 +261,19 @@ class RhasspyMqttApi {
           json.decode(MqttPublishPayload.bytesToStringAsString(
               recMessPayload.payload.message)));
       if (intentParsed.siteId == siteId) onReceivedIntent(intentParsed);
+      /// if the intent is to be managed
+      if( intentParsed.sessionId != null){
+        Future.delayed(Duration(seconds: timeOutIntent), () {
+        if(_intentHandled){
+          /// intent handled correctly
+          _intentHandled = false;
+        } else {
+          onTimeoutIntentHandle(intentParsed);
+        }
+      });
+
+      }
+      
     }
   }
 
