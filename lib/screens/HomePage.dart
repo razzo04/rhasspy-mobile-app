@@ -6,6 +6,7 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flushbar/flushbar_helper.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_audio_recorder/flutter_audio_recorder.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -30,6 +31,7 @@ class _HomePageState extends State<HomePage> {
   RhasspyApi rhasspy;
   RhasspyMqttApi rhasspyMqtt;
   AudioPlayer audioPlayer = AudioPlayer();
+  MethodChannel platform = MethodChannel('rhasspy_mobile_app/widget');
   Future<SharedPreferences> _prefs = SharedPreferences.getInstance();
   var _scaffoldKey = GlobalKey<ScaffoldState>();
 
@@ -216,6 +218,9 @@ class _HomePageState extends State<HomePage> {
 
   void _starRecording() async {
     if (await Permission.microphone.request().isGranted) {
+      setState(() {
+                micColor = Colors.red;
+              });
       Directory appDocDirectory = await getApplicationDocumentsDirectory();
       String pathFile = appDocDirectory.path + "/speech_to_text.wav";
       File audioFile = File(pathFile);
@@ -259,6 +264,13 @@ class _HomePageState extends State<HomePage> {
 
   @override
   void initState() {
+      platform.setMethodCallHandler((call) async {
+      if(call.method == "StartRecording"){
+        _starRecording();
+        return true;
+      }
+      return null;
+    });
     _setupMqtt();
     super.initState();
   }
@@ -267,10 +279,14 @@ class _HomePageState extends State<HomePage> {
   void dispose() {
     rhasspyMqtt.disconnect();
     rhasspyMqtt = null;
+    textEditingController.dispose();
     super.dispose();
   }
 
   void _setupMqtt() async {
+    if(rhasspyMqtt != null && rhasspyMqtt.isConnected){
+      return;
+    }
     _prefs.then((SharedPreferences prefs) async {
       if (!prefs.containsKey("MQTTONLY")) {
         prefs.setBool("MQTTONLY", false);
@@ -317,9 +333,6 @@ class _HomePageState extends State<HomePage> {
             /// wait for the audio to be played after starting to listen
             audioPlayer.onPlayerCompletion.first.then((value) {
               _starRecording();
-              setState(() {
-                micColor = Colors.red;
-              });
             });
           },
           onTimeoutIntentHandle: (intentParsed) {
