@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 import 'dart:typed_data';
+import 'package:flutter/material.dart';
 import 'package:mqtt_client/mqtt_client.dart';
 import 'package:mqtt_client/mqtt_server_client.dart';
 import 'package:rhasspy_mobile_app/utilits/JsonHelperClass.dart';
@@ -15,17 +17,26 @@ class RhasspyMqttApi {
   MqttServerClient client;
   bool isConnected = false;
   bool _intentHandled = false;
-  /// the time to wait before calling onTimeoutIntentHandle 
+  bool _streamActive = false;
+  Stream<Uint8List> audioStream;
+  int _countChunk = 0;
+  StreamSubscription _audioStreamSubscription;
+
+  /// the time to wait before calling onTimeoutIntentHandle
   /// if endSession or continueSession is not received
-  int timeOutIntent; 
+  int timeOutIntent;
   String _currentSessionId;
   void Function(HermesNluIntentParsed) onReceivedIntent;
   void Function(HermesTextCaptured) onReceivedText;
-  void Function(List<int>) onReceivedAudio;
+
+  /// call when audio data are available to play.
+  /// if the function returns true send playFinished
+  Future<bool> Function(List<int>) onReceivedAudio;
   void Function(HermesEndSession) onReceivedEndSession;
   void Function(HermesContinueSession) onReceivedContinueSession;
   void Function(HermesNluIntentParsed) onTimeoutIntentHandle;
-  List<int> Function() captureAudio;
+  void Function() stopRecording;
+
   RhasspyMqttApi(
       this.host, this.port, this.ssl, this.username, this.password, this.siteId,
       {this.timeOutIntent = 4,
@@ -34,7 +45,9 @@ class RhasspyMqttApi {
       this.onReceivedAudio,
       this.onReceivedEndSession,
       this.onReceivedContinueSession,
-      this.onTimeoutIntentHandle}) {
+      this.onTimeoutIntentHandle,
+      this.audioStream,
+      this.stopRecording}) {
     client =
         MqttServerClient.withPort(host, siteId, port, maxConnectionAttempts: 1);
     client.keepAlivePeriod = 20;
@@ -49,16 +62,37 @@ class RhasspyMqttApi {
         .startClean()
         .withWillQos(MqttQos.atLeastOnce);
     client.connectionMessage = connMess;
+    if (audioStream != null) {
+      _audioStreamSubscription = audioStream.listen((dataAudio) {
+        print("Recivied");
+        // if you do not publish some data before start listening
+        // rhasspy silence will not work properly
+        if (_countChunk <= 2) {
+          publishAudioFrame(dataAudio);
+          _countChunk++;
+        } else {
+          if (_currentSessionId == null && !_streamActive) {
+            _streamActive = true;
+            _currentSessionId = generateId();
+            //hermesAsrToggleOn();
+            hermesAsrStartListening(sessionId: _currentSessionId);
+            publishAudioFrame(dataAudio);
+            print("generate new data session");
+          } else {
+            publishAudioFrame(dataAudio);
+          }
+        }
+      });
+    }
   }
 
-  /// Before doing any operation, you must call the service.
+  /// Before doing any operation, you must call the function.
   /// Its return codes are 0 connection successfully made
   /// 1 connection failed and 2 incorrect credentials.
   Future<int> connect() async {
     try {
       await client.connect(username, password).timeout(Duration(seconds: 4));
-    } catch (e) {
-    }
+    } catch (e) {}
     if (client.connectionStatus.state == MqttConnectionState.connected) {
       print('Mosquitto client connected');
       isConnected = true;
@@ -103,7 +137,7 @@ class RhasspyMqttApi {
       {String sessionId,
       String wakewordId,
       bool stopInSilence = true,
-      bool sendAudioCaptured = false}) {
+      bool sendAudioCaptured = true}) {
     _publishString(
         "hermes/asr/startListening",
         json.encode({
@@ -112,7 +146,7 @@ class RhasspyMqttApi {
           "lang": null,
           "stopOnSilence": stopInSilence,
           "sendAudioCaptured": sendAudioCaptured,
-          "wakewordId": "$wakewordId",
+          "wakewordId": wakewordId,
           "intentFilter": null
         }));
   }
@@ -158,6 +192,7 @@ class RhasspyMqttApi {
   }
 
   String generateId() {
+    debugPrint("generate id");
     String randomString = getRandomString(36);
     randomString = randomString.replaceRange(8, 9, "-");
     randomString = randomString.replaceRange(13, 14, "-");
@@ -168,6 +203,7 @@ class RhasspyMqttApi {
 
   void hermesTtsSay(String text, {String id, String sessionId = ""}) {
     if (id == null) id = generateId();
+    print("TTS say call text: $text, id: $id, sessionId: $sessionId");
     _publishString(
         "hermes/tts/say",
         json.encode({
@@ -177,6 +213,12 @@ class RhasspyMqttApi {
           "id": "$id",
           "sessionId": "$sessionId"
         }));
+  }
+
+  void hermesPlayFinished(String requestId, {String sessionId}) {
+    print("Play finish");
+    _publishString("hermes/audioServer/$siteId/playFinished",
+        json.encode({"id": requestId, "sessionId": sessionId ?? ""}));
   }
 
   void hermesNluQuery(String input,
@@ -214,6 +256,10 @@ class RhasspyMqttApi {
     hermesTtsSay(text, sessionId: _currentSessionId);
   }
 
+  void stoplistening() {
+    hermesAsrStopListening(sessionId: _currentSessionId);
+  }
+
   onReciviedMessages(List<MqttReceivedMessage<MqttMessage>> messages) {
     var lastMessage = messages[0];
     print("topic: ${lastMessage.topic}");
@@ -221,14 +267,23 @@ class RhasspyMqttApi {
       print("recivied audio");
       final MqttPublishMessage recMessPayload = lastMessage.payload;
       var buffer = recMessPayload.payload.message;
-      onReceivedAudio(buffer.toList());
+      onReceivedAudio(buffer.toList()).then((value) {
+        if (value) {
+          hermesPlayFinished(lastMessage.topic.split("/").last);
+        }
+      });
     }
     if (lastMessage.topic == "hermes/asr/textCaptured") {
       final MqttPublishMessage recMessPayload = lastMessage.payload;
       HermesTextCaptured textCaptured = HermesTextCaptured.fromJson(json.decode(
           MqttPublishPayload.bytesToStringAsString(
               recMessPayload.payload.message)));
-      if (textCaptured.siteId == siteId) onReceivedText(textCaptured);
+      if (textCaptured.siteId == siteId) {
+        onReceivedText(textCaptured);
+        if (_streamActive) {
+          stopRecording();
+        }
+      }
     }
     if (lastMessage.topic == "hermes/dialogueManager/endSession") {
       final MqttPublishMessage recMessPayload = lastMessage.payload;
@@ -241,6 +296,8 @@ class RhasspyMqttApi {
         hermesTtsSay(endSession.text, sessionId: _currentSessionId);
         onReceivedEndSession(endSession);
         _currentSessionId = null;
+        _streamActive = false;
+        _countChunk = 0;
       }
     }
     if (lastMessage.topic == "hermes/dialogueManager/continueSession") {
@@ -261,20 +318,26 @@ class RhasspyMqttApi {
           json.decode(MqttPublishPayload.bytesToStringAsString(
               recMessPayload.payload.message)));
       if (intentParsed.siteId == siteId) onReceivedIntent(intentParsed);
-      /// if the intent is to be managed
-      if( intentParsed.sessionId != null){
-        Future.delayed(Duration(seconds: timeOutIntent), () {
-        if(_intentHandled){
-          /// intent handled correctly
-          _intentHandled = false;
-        } else {
-          onTimeoutIntentHandle(intentParsed);
-        }
-      });
 
+      /// if the intent is to be managed
+      if (intentParsed.sessionId != null) {
+        Future.delayed(Duration(seconds: timeOutIntent), () {
+          if (_intentHandled) {
+            /// intent handled correctly
+            _intentHandled = false;
+          } else {
+            _currentSessionId = null;
+            _streamActive = false;
+            _countChunk = 0;
+            onTimeoutIntentHandle(intentParsed);
+          }
+        });
       }
-      
     }
+  }
+
+  void resetSessionId() {
+    _currentSessionId = null;
   }
 
   void onDisconnected() {
@@ -287,7 +350,8 @@ class RhasspyMqttApi {
     isConnected = true;
   }
 
-  void disconnect() {
+  Future<void> disconnect() async {
+    if(_audioStreamSubscription != null) await _audioStreamSubscription.cancel();
     client.disconnect();
   }
 

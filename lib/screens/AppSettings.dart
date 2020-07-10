@@ -250,6 +250,16 @@ class _AppSettingsState extends State<AppSettings> {
               title: Text("Only MQTT"),
               subtitle: Text("use mqtt on the home page not using more rest api."),
             ),
+            SwitchListTile.adaptive(
+              value: prefs.getBool("SILENCE") ?? false,
+              onChanged: (bool value) {
+                setState(() {
+                  prefs.setBool("SILENCE", value);
+                });
+              },
+              title: Text("Silence Detection"),
+              subtitle: Text("auto stop listening when silence is detected"),
+            ),
             FlatButton.icon(
               onPressed: () async {
                 _formKey.currentState.save();
@@ -275,7 +285,7 @@ class _AppSettingsState extends State<AppSettings> {
                   FlushbarHelper.createError(message: "incorrect credentials")
                       .show(context);
                 }
-                if(rhasspyMqtt != null) rhasspyMqtt.disconnect();
+                if(rhasspyMqtt != null) await rhasspyMqtt.disconnect();
                 rhasspyMqtt = null;
               },
               icon: Icon(Icons.check),
