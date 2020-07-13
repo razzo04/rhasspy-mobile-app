@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
@@ -19,8 +20,12 @@ class RhasspyMqttApi {
   bool _intentHandled = false;
   bool _streamActive = false;
   Stream<Uint8List> audioStream;
+  String pemFilePath;
+  SecurityContext _securityContext;
   int _countChunk = 0;
   StreamSubscription _audioStreamSubscription;
+  Completer<bool> _completerConnected = Completer();
+  Future<bool> get connected => _completerConnected.future;
 
   /// the time to wait before calling onTimeoutIntentHandle
   /// if endSession or continueSession is not received
@@ -47,7 +52,8 @@ class RhasspyMqttApi {
       this.onReceivedContinueSession,
       this.onTimeoutIntentHandle,
       this.audioStream,
-      this.stopRecording}) {
+      this.stopRecording,
+      this.pemFilePath}) {
     client =
         MqttServerClient.withPort(host, siteId, port, maxConnectionAttempts: 1);
     client.keepAlivePeriod = 20;
@@ -55,13 +61,28 @@ class RhasspyMqttApi {
     client.onSubscribed = onSubscribed;
     client.onDisconnected = onDisconnected;
     client.pongCallback = pong;
+    if (ssl) {
+      client.secure = true;
+      client.onBadCertificate = (dynamic certificate) {
+        print("Bad certificate");
+        return false;
+      };
+      _securityContext = SecurityContext.defaultContext;
+      if (pemFilePath != null) {
+        try {
+          _securityContext.setTrustedCertificates(pemFilePath);
+        } on TlsException {}
+      }
 
+      client.securityContext = _securityContext;
+    }
     final connMess = MqttConnectMessage()
         .withClientIdentifier(siteId)
         .keepAliveFor(20)
         .startClean()
         .withWillQos(MqttQos.atLeastOnce);
     client.connectionMessage = connMess;
+
     if (audioStream != null) {
       _audioStreamSubscription = audioStream.listen((dataAudio) {
         print("Recivied");
@@ -88,14 +109,21 @@ class RhasspyMqttApi {
 
   /// Before doing any operation, you must call the function.
   /// Its return codes are 0 connection successfully made
-  /// 1 connection failed and 2 incorrect credentials.
+  /// 1 connection failed, 2 incorrect credentials and
+  /// 3 bad certificate.
   Future<int> connect() async {
     try {
       await client.connect(username, password).timeout(Duration(seconds: 4));
+    } on HandshakeException {
+      client.disconnect();
+      isConnected = false;
+      _completerConnected.complete(false);
+      return 3;
     } catch (e) {}
     if (client.connectionStatus.state == MqttConnectionState.connected) {
       print('Mosquitto client connected');
       isConnected = true;
+      _completerConnected.complete(true);
       client.updates.listen((value) => onReciviedMessages(value));
       client.subscribe("hermes/audioServer/${siteId.trim()}/playBytes/#",
           MqttQos.atLeastOnce);
@@ -112,10 +140,12 @@ class RhasspyMqttApi {
             MqttConnectReturnCode.notAuthorized) {
       client.disconnect();
       isConnected = false;
+      _completerConnected.complete(false);
       return 2;
     } else {
       client.disconnect();
       isConnected = false;
+      _completerConnected.complete(false);
       return 1;
     }
   }
@@ -351,7 +381,9 @@ class RhasspyMqttApi {
   }
 
   Future<void> disconnect() async {
-    if(_audioStreamSubscription != null) await _audioStreamSubscription.cancel();
+    if (_audioStreamSubscription != null)
+      await _audioStreamSubscription.cancel();
+    if (ssl) _securityContext = null;
     client.disconnect();
   }
 

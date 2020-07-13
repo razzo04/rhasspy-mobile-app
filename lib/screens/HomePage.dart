@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:audioplayers/audioplayers.dart';
@@ -80,7 +79,8 @@ class _HomePageState extends State<HomePage> {
                         statusRecording == RecordingStatus.Stopped) {
                       _starRecording();
                     } else {
-                      if ((await _prefs).getBool("MQTTONLY") &&
+                      if ((await _prefs).containsKey("MQTT") &&
+                          (await _prefs).getBool("MQTT") &&
                           !rhasspyMqtt.isConnected) {
                         FlushbarHelper.createError(
                                 message: "Connect before use")
@@ -115,7 +115,7 @@ class _HomePageState extends State<HomePage> {
                 IconButton(
                     icon: Icon(Icons.send),
                     onPressed: () async {
-                      if (!(await _prefs).getBool("MQTTONLY")) {
+                      if (!((await _prefs).getBool("MQTT") ?? false)) {
                         if (!await _checkRhasspyIsReady()) {
                           return;
                         }
@@ -160,7 +160,7 @@ class _HomePageState extends State<HomePage> {
                         var file =
                             await FilePicker.getFile(type: FileType.audio);
                         if (file != null) {
-                          if (!(await _prefs).getBool("MQTTONLY")) {
+                          if (!((await _prefs).getBool("MQTT") ?? false)) {
                             rhasspy.speechToText(file).then(
                                   (value) => setState(
                                     () {
@@ -233,7 +233,7 @@ class _HomePageState extends State<HomePage> {
     Recording result = await recorder.stop();
     statusRecording = result.status;
 
-    if (!(await _prefs).getBool("MQTTONLY")) {
+    if (!((await _prefs).getBool("MQTT") ?? false)) {
       String text = await rhasspy.speechToText(File(result.path));
       if (handle) {
         rhasspy.textToIntent(text);
@@ -241,10 +241,11 @@ class _HomePageState extends State<HomePage> {
       setState(() {
         textEditingController.text = text;
       });
-    }
-    if (!(await _prefs).getBool("SILENCE")) {
-      rhasspyMqtt.speechTotext(File(result.path).readAsBytesSync(),
-          cleanSession: !handle);
+    } else {
+      if (!((await _prefs).getBool("SILENCE") ?? false)) {
+        rhasspyMqtt.speechTotext(File(result.path).readAsBytesSync(),
+            cleanSession: !handle);
+      }
     }
   }
 
@@ -308,6 +309,11 @@ class _HomePageState extends State<HomePage> {
             prefs.containsKey("SILENCE") &&
             prefs.getBool("MQTT") &&
             prefs.getBool("SILENCE")) {
+          if (!rhasspyMqtt.isConnected) {
+            FlushbarHelper.createError(message: "Connect before use")
+                .show(context);
+            return;
+          }
           int previosLenght = 0;
           Directory appDocDirectory = await getApplicationDocumentsDirectory();
           String pathFile = appDocDirectory.path + "/speech_to_text.wav";
@@ -342,7 +348,7 @@ class _HomePageState extends State<HomePage> {
                     print("Lenght: $fileLenght");
                     previosLenght += chunkSize;
                     Uint8List header = waveHeader(
-                        chunkSize , chunkSize + 36, 16000, 1, byteRate);
+                        chunkSize, chunkSize + 36, 16000, 1, byteRate);
                     dataFile.insertAll(0, header);
                     audioStreamcontroller.add(Uint8List.fromList(dataFile));
                     active = false;
@@ -423,21 +429,27 @@ class _HomePageState extends State<HomePage> {
       return;
     }
     _prefs.then((SharedPreferences prefs) async {
-      if (!prefs.containsKey("MQTTONLY")) {
-        prefs.setBool("MQTTONLY", false);
-      }
+      String certificatePath;
       if (prefs.getBool("MQTT") != null && prefs.getBool("MQTT")) {
-        if(audioStreamcontroller.hasListener){
+        if (audioStreamcontroller.hasListener) {
           audioStreamcontroller.close();
           audioStreamcontroller = StreamController<Uint8List>();
+        }
+        if (prefs.getBool("MQTTSSL") ?? false) {
+          Directory appDocDirectory = await getApplicationDocumentsDirectory();
+          certificatePath = appDocDirectory.path + "/mqttCertificate.pem";
+          if (!File(certificatePath).existsSync()) {
+            certificatePath = null;
+          }
         }
         rhasspyMqtt = RhasspyMqttApi(
             prefs.getString("MQTTHOST"),
             prefs.getInt("MQTTPORT"),
-            false,
+            prefs.getBool("MQTTSSL") ?? false,
             prefs.getString("MQTTUSERNAME"),
             prefs.getString("MQTTPASSWORD"),
             prefs.getString("SITEID"),
+            pemFilePath: certificatePath,
             audioStream: audioStreamcontroller.stream,
             onReceivedAudio: (value) async {
           String filePath = (await getApplicationDocumentsDirectory()).path +
@@ -488,6 +500,10 @@ class _HomePageState extends State<HomePage> {
           }
           if (result == 2) {
             FlushbarHelper.createError(message: "incorrect credentials")
+                .show(context);
+          }
+          if (result == 3) {
+            FlushbarHelper.createError(message: "untrusted certificate")
                 .show(context);
           }
         });

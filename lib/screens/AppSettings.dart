@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flushbar/flushbar_helper.dart';
 import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:rhasspy_mobile_app/utilits/RhasspyApi.dart';
 import 'package:rhasspy_mobile_app/utilits/RhasspyMqttApi.dart';
@@ -31,10 +32,10 @@ class _AppSettingsState extends State<AppSettings> {
           future: _prefs,
           builder: (BuildContext context,
               AsyncSnapshot<SharedPreferences> snapshot) {
-                
             if (snapshot.hasData) {
               SharedPreferences prefs = snapshot.data;
-              rhasspyIpController = TextEditingController(text: prefs.getString("Rhasspyip") ?? "");
+              rhasspyIpController = TextEditingController(
+                  text: prefs.getString("Rhasspyip") ?? "");
               return SingleChildScrollView(
                 child: Column(
                   children: <Widget>[
@@ -80,8 +81,7 @@ class _AppSettingsState extends State<AppSettings> {
                       ),
                     ),
                     SwitchListTile.adaptive(
-                      value:
-                          prefs.getBool("SSL") ?? false,
+                      value: prefs.getBool("SSL") ?? false,
                       onChanged: (bool value) {
                         setState(() {
                           prefs.setBool("SSL", value);
@@ -241,16 +241,6 @@ class _AppSettingsState extends State<AppSettings> {
               ),
             ),
             SwitchListTile.adaptive(
-              value: prefs != null ? prefs.getBool("MQTTONLY") ?? false : false,
-              onChanged: (bool value) {
-                setState(() {
-                  prefs.setBool("MQTTONLY", value);
-                });
-              },
-              title: Text("Only MQTT"),
-              subtitle: Text("use mqtt on the home page not using more rest api."),
-            ),
-            SwitchListTile.adaptive(
               value: prefs.getBool("SILENCE") ?? false,
               onChanged: (bool value) {
                 setState(() {
@@ -260,17 +250,67 @@ class _AppSettingsState extends State<AppSettings> {
               title: Text("Silence Detection"),
               subtitle: Text("auto stop listening when silence is detected"),
             ),
+            SwitchListTile.adaptive(
+              value: prefs.getBool("MQTTSSL") ?? false,
+              onChanged: (bool value) {
+                setState(() {
+                  prefs.setBool("MQTTSSL", value);
+                });
+              },
+              title: Text("Enable SSL"),
+              subtitle: Text("enable secure connections for mqtt"),
+            ),
+            FlatButton(
+              onPressed: () async {
+                if (await Permission.storage.request().isGranted) {
+                  File certificate = await FilePicker.getFile();
+                  if (certificate != null) {
+                    Directory appDocDirectory =
+                        await getApplicationDocumentsDirectory();
+                    String pathFile =
+                        appDocDirectory.path + "/mqttCertificate.pem";
+                    try {
+                      certificate.copySync(pathFile);
+                    } catch (e) {
+                      FlushbarHelper.createError(
+                              message: "cannot save the certificate")
+                          .show(context);
+                      return;
+                    }
+                    FlushbarHelper.createSuccess(
+                            message: "certificate added correctly")
+                        .show(context);
+                  }
+                }
+              },
+              child: Tooltip(
+                height: 40,
+                child: Text("Add Self-signed certificate"),
+                message:
+                    "You must add the certificate only if it has not been signed by a trusted CA",
+              ),
+            ),
             FlatButton.icon(
               onPressed: () async {
                 _formKey.currentState.save();
+                String certificatePath;
+                if (prefs.getBool("MQTTSSL") ?? false) {
+                  Directory appDocDirectory =
+                      await getApplicationDocumentsDirectory();
+                  certificatePath =
+                      appDocDirectory.path + "/mqttCertificate.pem";
+                  if (!File(certificatePath).existsSync()) {
+                    certificatePath = null;
+                  }
+                }
                 rhasspyMqtt = RhasspyMqttApi(
-                  prefs.getString("MQTTHOST"),
-                  prefs.getInt("MQTTPORT"),
-                  false,
-                  prefs.getString("MQTTUSERNAME"),
-                  prefs.getString("MQTTPASSWORD"),
-                  prefs.getString("SITEID"),
-                );
+                    prefs.getString("MQTTHOST"),
+                    prefs.getInt("MQTTPORT"),
+                    prefs.getBool("MQTTSSL") ?? false,
+                    prefs.getString("MQTTUSERNAME"),
+                    prefs.getString("MQTTPASSWORD"),
+                    prefs.getString("SITEID"),
+                    pemFilePath: certificatePath);
                 int result = await rhasspyMqtt.connect();
                 if (result == 0) {
                   FlushbarHelper.createSuccess(
@@ -285,7 +325,11 @@ class _AppSettingsState extends State<AppSettings> {
                   FlushbarHelper.createError(message: "incorrect credentials")
                       .show(context);
                 }
-                if(rhasspyMqtt != null) await rhasspyMqtt.disconnect();
+                if (result == 3) {
+                  FlushbarHelper.createError(message: "untrusted certificate")
+                      .show(context);
+                }
+                if (rhasspyMqtt != null) await rhasspyMqtt.disconnect();
                 rhasspyMqtt = null;
               },
               icon: Icon(Icons.check),
@@ -307,10 +351,12 @@ class _AppSettingsState extends State<AppSettings> {
       );
     }
   }
-@override
+
+  @override
   void initState() {
     super.initState();
   }
+
   @override
   void dispose() {
     super.dispose();
