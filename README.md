@@ -39,4 +39,4 @@ flutter build ios
 
  - Wake word
  - Intent display
- - tls for mqtt
+ - run mqtt in a dart isolate

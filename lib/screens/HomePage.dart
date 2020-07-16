@@ -77,7 +77,7 @@ class _HomePageState extends State<HomePage> {
                       statusRecording = (await recorder.current()).status;
                     if (statusRecording == RecordingStatus.Unset ||
                         statusRecording == RecordingStatus.Stopped) {
-                      _starRecording();
+                      _startRecording();
                     } else {
                       if ((await _prefs).containsKey("MQTT") &&
                           (await _prefs).getBool("MQTT") &&
@@ -299,12 +299,14 @@ class _HomePageState extends State<HomePage> {
     return header;
   }
 
-  void _starRecording() async {
+  void _startRecording() async {
     if (await Permission.microphone.request().isGranted) {
+      if (recorder != null) statusRecording = (await recorder.current()).status;
+      if (statusRecording == RecordingStatus.Recording) {
+        print("we are already recording");
+        return;
+      }
       _prefs.then((prefs) async {
-        setState(() {
-          micColor = Colors.red;
-        });
         if (prefs.containsKey("MQTT") &&
             prefs.containsKey("SILENCE") &&
             prefs.getBool("MQTT") &&
@@ -322,7 +324,9 @@ class _HomePageState extends State<HomePage> {
               FlutterAudioRecorder(pathFile, audioFormat: AudioFormat.WAV);
           await recorder.initialized;
           await recorder.start();
-
+          setState(() {
+            micColor = Colors.red;
+          });
           File audioFile = File(pathFile + ".temp");
           int chunkSize = 2048;
           int byteRate = (16000 * 16 * 1 ~/ 8);
@@ -366,6 +370,9 @@ class _HomePageState extends State<HomePage> {
               FlutterAudioRecorder(pathFile, audioFormat: AudioFormat.WAV);
           await recorder.initialized;
           await recorder.start();
+          setState(() {
+            micColor = Colors.red;
+          });
           Recording current = await recorder.current(channel: 0);
           statusRecording = current.status;
           Timer.periodic(Duration(milliseconds: 50), (Timer t) async {
@@ -406,7 +413,7 @@ class _HomePageState extends State<HomePage> {
   void initState() {
     platform.setMethodCallHandler((call) async {
       if (call.method == "StartRecording") {
-        _starRecording();
+        _startRecording();
         return true;
       }
       return null;
@@ -443,56 +450,70 @@ class _HomePageState extends State<HomePage> {
           }
         }
         rhasspyMqtt = RhasspyMqttApi(
-            prefs.getString("MQTTHOST"),
-            prefs.getInt("MQTTPORT"),
-            prefs.getBool("MQTTSSL") ?? false,
-            prefs.getString("MQTTUSERNAME"),
-            prefs.getString("MQTTPASSWORD"),
-            prefs.getString("SITEID"),
-            pemFilePath: certificatePath,
-            audioStream: audioStreamcontroller.stream,
-            onReceivedAudio: (value) async {
-          String filePath = (await getApplicationDocumentsDirectory()).path +
-              "text_to_speech_mqtt.wav";
-          File file = File(filePath);
-          file.writeAsBytesSync(value);
-          if (audioPlayer.state == AudioPlayerState.PLAYING) {
-            /// wait until the audio is played entirely before playing another audio
-            audioPlayer.onPlayerCompletion.first.then((value) {
+          prefs.getString("MQTTHOST"),
+          prefs.getInt("MQTTPORT"),
+          prefs.getBool("MQTTSSL") ?? false,
+          prefs.getString("MQTTUSERNAME"),
+          prefs.getString("MQTTPASSWORD"),
+          prefs.getString("SITEID"),
+          pemFilePath: certificatePath,
+          audioStream: prefs.getBool("SILENCE") ?? false
+              ? audioStreamcontroller.stream
+              : null,
+          onReceivedAudio: (value) async {
+            //TODO move to cache directory
+            String filePath = (await getApplicationDocumentsDirectory()).path +
+                "text_to_speech_mqtt.wav";
+            File file = File(filePath);
+            file.writeAsBytesSync(value);
+            if (audioPlayer.state == AudioPlayerState.PLAYING) {
+              /// wait until the audio is played entirely before playing another audio
+              audioPlayer.onPlayerCompletion.first.then((value) {
+                audioPlayer.play(filePath, isLocal: true);
+                return true;
+              });
+            } else {
               audioPlayer.play(filePath, isLocal: true);
+              await audioPlayer.onPlayerCompletion.first;
               return true;
+            }
+            return false;
+          },
+          onReceivedText: (textCapture) {
+            setState(() {
+              textEditingController.text = textCapture.text;
             });
-          } else {
-            audioPlayer.play(filePath, isLocal: true);
-            return true;
-          }
-        }, onReceivedText: (textCapture) {
-          setState(() {
-            textEditingController.text = textCapture.text;
-          });
-          if (handle) {
-            rhasspyMqtt.textToIntent(textCapture.text, handle: handle);
-          }
-        }, onReceivedIntent: (intentParsed) {
-          print("Recognized intent: ${intentParsed.intent.intentName}");
-        }, onReceivedEndSession: (endSession) {
-          print(endSession.text);
-        }, onReceivedContinueSession: (continueSession) {
-          print(continueSession.text);
-
-          /// wait for the audio to be played after starting to listen
-          audioPlayer.onPlayerCompletion.first.then((value) {
-            _starRecording();
-          });
-        }, onTimeoutIntentHandle: (intentParsed) {
-          FlushbarHelper.createError(
-                  message:
-                      "no one managed the intent: ${intentParsed.intent.intentName}")
-              .show(context);
-          print("Impossible hadling intent: ${intentParsed.intent.intentName}");
-        }, stopRecording: () async {
-          await _stopRecording();
-        });
+            if (handle && !rhasspyMqtt.isSessionStarted) {
+              rhasspyMqtt.textToIntent(textCapture.text, handle: handle);
+            }
+          },
+          onReceivedIntent: (intentParsed) {
+            print("Recognized intent: ${intentParsed.intent.intentName}");
+          },
+          onReceivedEndSession: (endSession) {
+            print(endSession.text);
+          },
+          onReceivedContinueSession: (continueSession) {
+            print(continueSession.text);
+          },
+          onTimeoutIntentHandle: (intentParsed) {
+            FlushbarHelper.createError(
+                    message:
+                        "no one managed the intent: ${intentParsed.intent.intentName}")
+                .show(context);
+            print(
+                "Impossible hadling intent: ${intentParsed.intent.intentName}");
+          },
+          stopRecording: () async {
+            await _stopRecording();
+          },
+          startRecording: () {
+            /// wait for the audio to be played after starting to listen
+            audioPlayer.onPlayerCompletion.first.then((value) {
+              _startRecording();
+            });
+          },
+        );
         rhasspyMqtt.connect().then((result) {
           if (result == 1) {
             FlushbarHelper.createError(message: "failed to connect")

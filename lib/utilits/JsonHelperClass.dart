@@ -1,4 +1,3 @@
-
 class HermesTextCaptured {
   String text;
   double likelihood;
@@ -17,17 +16,17 @@ class HermesTextCaptured {
 
   HermesTextCaptured.fromJson(Map<String, dynamic> json) {
     text = json['text'];
-    if(json['likelihood'] is double){
+    if (json['likelihood'] is double) {
       likelihood = json['likelihood'];
     } else {
       likelihood = double.parse(json['likelihood'].toString());
     }
-    if (json['seconds'] is double){
+    if (json['seconds'] is double) {
       seconds = json['seconds'];
     } else {
       seconds = double.parse(json['seconds'].toString());
     }
-    
+
     siteId = json['siteId'];
     sessionId = json['sessionId'];
     wakewordId = json['wakewordId'];
@@ -44,7 +43,6 @@ class HermesTextCaptured {
     return data;
   }
 }
-
 
 class HermesNluIntentParsed {
   String input;
@@ -247,7 +245,8 @@ class HermesContinueSession {
     siteId = json['siteId'];
     customData = json['customData'];
     text = json['text'];
-    if(json['intentFilter'] != null) intentFilter = json['intentFilter'].cast<String>();
+    if (json['intentFilter'] != null)
+      intentFilter = json['intentFilter'].cast<String>();
     sendIntentNotRecognized = json['sendIntentNotRecognized'];
     if (json['slots'] != null) {
       slot = new List<Slots>();
@@ -272,6 +271,124 @@ class HermesContinueSession {
   }
 }
 
+class DialogueStartSession {
+  String siteId;
+  String customData;
+  Init init;
 
+  DialogueStartSession({this.siteId, this.customData, this.init});
 
+  DialogueStartSession.fromJson(Map<String, dynamic> json) {
+    siteId = json['siteId'];
+    customData = json['customData'];
+    init = json['init'] != null ? new Init.fromJson(json['init']) : null;
+  }
 
+  Map<String, dynamic> toJson() {
+    final Map<String, dynamic> data = new Map<String, dynamic>();
+    data['siteId'] = this.siteId;
+    data['customData'] = this.customData;
+    if (this.init != null) {
+      data['init'] = this.init.toJson();
+    }
+    return data;
+  }
+}
+
+class Init {
+  String type;
+  String text;
+  bool canBeEnqueued;
+  List<String> intentFilter;
+
+  Init({this.type, this.text, this.canBeEnqueued, this.intentFilter});
+
+  Init.fromJson(Map<String, dynamic> json) {
+    type = json['type'];
+    text = json['text'];
+    canBeEnqueued = json['canBeEnqueued'];
+    if (intentFilter != null)
+      intentFilter = json['intentFilter'].cast<String>();
+  }
+
+  Map<String, dynamic> toJson() {
+    final Map<String, dynamic> data = new Map<String, dynamic>();
+    data['type'] = this.type;
+    data['text'] = this.text;
+    data['canBeEnqueued'] = this.canBeEnqueued;
+    data['intentFilter'] = this.intentFilter;
+    return data;
+  }
+}
+
+class DialogueSessionStarted {
+  String sessionId;
+  String siteId;
+  String customData;
+  String lang;
+
+  DialogueSessionStarted(
+      {this.sessionId, this.siteId, this.customData, this.lang});
+
+  DialogueSessionStarted.fromJson(Map<String, dynamic> json) {
+    sessionId = json['sessionId'];
+    siteId = json['siteId'];
+    customData = json['customData'];
+    lang = json['lang'];
+  }
+
+  Map<String, dynamic> toJson() {
+    final Map<String, dynamic> data = new Map<String, dynamic>();
+    data['sessionId'] = this.sessionId;
+    data['siteId'] = this.siteId;
+    data['customData'] = this.customData;
+    data['lang'] = this.lang;
+    return data;
+  }
+}
+
+class DialogueSessionEnded {
+  Termination termination;
+  String sessionId;
+  String siteId;
+  String customData;
+
+  DialogueSessionEnded(
+      {this.termination, this.sessionId, this.siteId, this.customData});
+
+  DialogueSessionEnded.fromJson(Map<String, dynamic> json) {
+    termination = json['termination'] != null
+        ? new Termination.fromJson(json['termination'])
+        : null;
+    sessionId = json['sessionId'];
+    siteId = json['siteId'];
+    customData = json['customData'];
+  }
+
+  Map<String, dynamic> toJson() {
+    final Map<String, dynamic> data = new Map<String, dynamic>();
+    if (this.termination != null) {
+      data['termination'] = this.termination.toJson();
+    }
+    data['sessionId'] = this.sessionId;
+    data['siteId'] = this.siteId;
+    data['customData'] = this.customData;
+    return data;
+  }
+}
+
+class Termination {
+  String reason;
+
+  Termination({this.reason});
+
+  Termination.fromJson(Map<String, dynamic> json) {
+    reason = json['reason'];
+  }
+
+  Map<String, dynamic> toJson() {
+    final Map<String, dynamic> data = new Map<String, dynamic>();
+    data['reason'] = this.reason;
+    return data;
+  }
+}
