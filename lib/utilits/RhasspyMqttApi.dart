@@ -15,8 +15,17 @@ class RhasspyMqttApi {
   String username;
   String password;
   String siteId;
-  MqttServerClient client;
-  bool isConnected = false;
+  MqttServerClient _client;
+  bool get isConnected {
+    MqttConnectionState state = _client.connectionStatus.state;
+    if (state == MqttConnectionState.disconnected ||
+        state == MqttConnectionState.disconnecting) {
+      return false;
+    } else {
+      return true;
+    }
+  }
+
   bool _intentHandled = false;
   bool _streamActive = false;
   bool isSessionStarted = false;
@@ -43,8 +52,10 @@ class RhasspyMqttApi {
   void Function(HermesContinueSession) onReceivedContinueSession;
   void Function(HermesNluIntentParsed) onTimeoutIntentHandle;
   void Function() stopRecording;
-  void Function() startRecording;
+  Future<bool> Function() startRecording;
   void Function(DialogueStartSession) onStartSession;
+  void Function() onConnected;
+  void Function() onDisconnected;
 
   RhasspyMqttApi(
       this.host, this.port, this.ssl, this.username, this.password, this.siteId,
@@ -55,21 +66,22 @@ class RhasspyMqttApi {
       this.onReceivedEndSession,
       this.onReceivedContinueSession,
       this.onTimeoutIntentHandle,
+      this.onConnected,
+      this.onDisconnected,
       this.onStartSession,
       this.startRecording,
       this.audioStream,
       this.stopRecording,
       this.pemFilePath}) {
-    client =
+    _client =
         MqttServerClient.withPort(host, siteId, port, maxConnectionAttempts: 1);
-    client.keepAlivePeriod = 20;
-    client.onConnected = onConnected;
-    client.onSubscribed = onSubscribed;
-    client.onDisconnected = onDisconnected;
-    client.pongCallback = pong;
+    _client.keepAlivePeriod = 20;
+    _client.onConnected = onConnected;
+    _client.onDisconnected = onDisconnected;
+    _client.pongCallback = _pong;
     if (ssl) {
-      client.secure = true;
-      client.onBadCertificate = (dynamic certificate) {
+      _client.secure = true;
+      _client.onBadCertificate = (dynamic certificate) {
         print("Bad certificate");
         return false;
       };
@@ -80,14 +92,14 @@ class RhasspyMqttApi {
         } on TlsException {}
       }
 
-      client.securityContext = _securityContext;
+      _client.securityContext = _securityContext;
     }
     final connMess = MqttConnectMessage()
         .withClientIdentifier(siteId)
         .keepAliveFor(20)
         .startClean()
         .withWillQos(MqttQos.atLeastOnce);
-    client.connectionMessage = connMess;
+    _client.connectionMessage = connMess;
     //TODO try not to lose Chunk
     bool isListening = false;
     if (audioStream != null) {
@@ -96,24 +108,24 @@ class RhasspyMqttApi {
         // if you do not publish some data before start listening
         // rhasspy silence will not work properly
         if (_countChunk <= 2) {
-          if (isListening && isSessionStarted) hermesAsrToggleOff();
+          if (isListening && isSessionStarted) _hermesAsrToggleOff();
           isListening = false;
-          publishAudioFrame(dataAudio);
+          _publishAudioFrame(dataAudio);
           _countChunk++;
         } else {
           if (!isListening) {
-            hermesAsrToggleOn();
+            _hermesAsrToggleOn();
             isListening = true;
           }
           if ((_currentSessionId == null && !isSessionStarted) &&
               !_streamActive) {
             _streamActive = true;
-            _currentSessionId = generateId();
-            hermesAsrStartListening(sessionId: _currentSessionId);
-            publishAudioFrame(dataAudio);
+            _currentSessionId = _generateId();
+            _hermesAsrStartListening(sessionId: _currentSessionId);
+            _publishAudioFrame(dataAudio);
             print("generate new data session");
           } else {
-            publishAudioFrame(dataAudio);
+            _publishAudioFrame(dataAudio);
           }
         }
       });
@@ -126,44 +138,40 @@ class RhasspyMqttApi {
   /// 3 bad certificate.
   Future<int> connect() async {
     try {
-      await client.connect(username, password).timeout(Duration(seconds: 4));
+      await _client.connect(username, password).timeout(Duration(seconds: 4));
     } on HandshakeException {
-      client.disconnect();
-      isConnected = false;
+      _client.disconnect();
       _completerConnected.complete(false);
       return 3;
     } catch (e) {}
-    if (client.connectionStatus.state == MqttConnectionState.connected) {
+    if (_client.connectionStatus.state == MqttConnectionState.connected) {
       print('Mosquitto client connected');
-      isConnected = true;
       _completerConnected.complete(true);
-      client.updates.listen((value) => onReciviedMessages(value));
-      client.subscribe("hermes/audioServer/${siteId.trim()}/playBytes/#",
+      _client.updates.listen((value) => _onReciviedMessages(value));
+      _client.subscribe("hermes/audioServer/${siteId.trim()}/playBytes/#",
           MqttQos.atLeastOnce);
-      client.subscribe("hermes/asr/textCaptured", MqttQos.atLeastOnce);
-      client.subscribe(
+      _client.subscribe("hermes/asr/textCaptured", MqttQos.atLeastOnce);
+      _client.subscribe(
           "hermes/dialogueManager/endSession", MqttQos.atLeastOnce);
-      client.subscribe("hermes/nlu/intentParsed", MqttQos.atLeastOnce);
-      client.subscribe(
+      _client.subscribe("hermes/nlu/intentParsed", MqttQos.atLeastOnce);
+      _client.subscribe(
           "hermes/dialogueManager/continueSession", MqttQos.atLeastOnce);
-      client.subscribe(
+      _client.subscribe(
           "hermes/dialogueManager/startSession", MqttQos.atLeastOnce);
-      client.subscribe(
+      _client.subscribe(
           "hermes/dialogueManager/sessionStarted", MqttQos.atLeastOnce);
-      client.subscribe(
+      _client.subscribe(
           "hermes/dialogueManager/sessionEnded", MqttQos.atLeastOnce);
       return 0;
-    } else if (client.connectionStatus.returnCode ==
+    } else if (_client.connectionStatus.returnCode ==
             MqttConnectReturnCode.badUsernameOrPassword ||
-        client.connectionStatus.returnCode ==
+        _client.connectionStatus.returnCode ==
             MqttConnectReturnCode.notAuthorized) {
-      client.disconnect();
-      isConnected = false;
+      _client.disconnect();
       _completerConnected.complete(false);
       return 2;
     } else {
-      client.disconnect();
-      isConnected = false;
+      _client.disconnect();
       _completerConnected.complete(false);
       return 1;
     }
@@ -172,17 +180,17 @@ class RhasspyMqttApi {
   void _publishString(String topic, [String data]) {
     final builder = MqttClientPayloadBuilder();
     if (data != null) builder.addUTF8String(data);
-    client.publishMessage(topic, MqttQos.exactlyOnce, builder.payload);
+    _client.publishMessage(topic, MqttQos.exactlyOnce, builder.payload);
   }
 
   void _publishBytes(String topic, Uint8List data) {
     var buffer = MqttByteBuffer.fromList(data);
     final builder = MqttClientPayloadBuilder();
     if (data != null) builder.addBuffer(buffer.buffer);
-    client.publishMessage(topic, MqttQos.exactlyOnce, builder.payload);
+    _client.publishMessage(topic, MqttQos.exactlyOnce, builder.payload);
   }
 
-  void hermesAsrStartListening(
+  void _hermesAsrStartListening(
       {String sessionId,
       String wakewordId,
       bool stopInSilence = true,
@@ -201,26 +209,26 @@ class RhasspyMqttApi {
         }));
   }
 
-  void publishAudioFrame(Uint8List dataAudio) {
+  void _publishAudioFrame(Uint8List dataAudio) {
     _publishBytes("hermes/audioServer/$siteId/audioFrame", dataAudio);
   }
 
-  void hermesAsrToggleOn({String reason = "playAudio"}) {
+  void _hermesAsrToggleOn({String reason = "playAudio"}) {
     _publishString("hermes/asr/toggleOn",
         json.encode({"siteId": "$siteId", "reason": "$reason"}));
   }
 
-  void hermesAsrToggleOff({String reason = "playAudio"}) {
+  void _hermesAsrToggleOff({String reason = "playAudio"}) {
     _publishString("hermes/asr/toggleOff",
         json.encode({"siteId": "$siteId", "reason": "$reason"}));
   }
 
-  void hermesAsrStopListening({String sessionId}) {
+  void _hermesAsrStopListening({String sessionId}) {
     _publishString("hermes/asr/stopListening",
         json.encode({"siteId": "$siteId", "sessionId": "$sessionId"}));
   }
 
-  void dialogueSessionStarted(String sessionId,
+  void _dialogueSessionStarted(String sessionId,
       {String customData, String lang}) {
     _publishString(
         "hermes/dialogueManager/sessionStarted",
@@ -237,26 +245,26 @@ class RhasspyMqttApi {
   /// if [cleanSession] is true after the command stopListening
   /// delete the sessionId.
   void speechTotext(Uint8List dataAudio, {bool cleanSession = true}) {
-    if (_currentSessionId == null) _currentSessionId = generateId();
-    hermesAsrToggleOn();
-    hermesAsrStartListening(sessionId: _currentSessionId);
-    publishAudioFrame(dataAudio);
-    hermesAsrStopListening(sessionId: _currentSessionId);
+    if (_currentSessionId == null) _currentSessionId = _generateId();
+    _hermesAsrToggleOn();
+    _hermesAsrStartListening(sessionId: _currentSessionId);
+    _publishAudioFrame(dataAudio);
+    _hermesAsrStopListening(sessionId: _currentSessionId);
     if (cleanSession) {
       _currentSessionId = null;
     }
   }
 
-  String getRandomString(int length) {
+  String _getRandomString(int length) {
     Random rnd = Random();
     const chars = 'abcdef1234567890';
     return String.fromCharCodes(Iterable.generate(
         length, (_) => chars.codeUnitAt(rnd.nextInt(chars.length))));
   }
 
-  String generateId() {
+  String _generateId() {
     debugPrint("generate id");
-    String randomString = getRandomString(36);
+    String randomString = _getRandomString(36);
     randomString = randomString.replaceRange(8, 9, "-");
     randomString = randomString.replaceRange(13, 14, "-");
     randomString = randomString.replaceRange(18, 19, "-");
@@ -264,8 +272,8 @@ class RhasspyMqttApi {
     return randomString;
   }
 
-  void hermesTtsSay(String text, {String id, String sessionId = ""}) {
-    if (id == null) id = generateId();
+  void _hermesTtsSay(String text, {String id, String sessionId = ""}) {
+    if (id == null) id = _generateId();
     print("TTS say call text: $text, id: $id, sessionId: $sessionId");
     _publishString(
         "hermes/tts/say",
@@ -278,13 +286,13 @@ class RhasspyMqttApi {
         }));
   }
 
-  void hermesPlayFinished(String requestId, {String sessionId}) {
+  void _hermesPlayFinished(String requestId, {String sessionId}) {
     print("Play finish");
     _publishString("hermes/audioServer/$siteId/playFinished",
         json.encode({"id": requestId, "sessionId": sessionId ?? ""}));
   }
 
-  void hermesNluQuery(String input,
+  void _hermesNluQuery(String input,
       {String id,
       List<String> intentFilter,
       String sessionId,
@@ -305,26 +313,26 @@ class RhasspyMqttApi {
 
   void textToIntent(String text, {bool handle = true}) {
     if (handle) {
-      if (_currentSessionId == null) _currentSessionId = generateId();
+      if (_currentSessionId == null) _currentSessionId = _generateId();
     } else {
       _currentSessionId = null;
     }
-    hermesNluQuery(text, sessionId: _currentSessionId);
+    _hermesNluQuery(text, sessionId: _currentSessionId);
   }
 
   void textToSpeech(String text, {bool generateSessionId = false}) {
     if (generateSessionId) {
-      if (_currentSessionId == null) _currentSessionId = generateId();
+      if (_currentSessionId == null) _currentSessionId = _generateId();
     }
-    hermesTtsSay(text, sessionId: _currentSessionId);
+    _hermesTtsSay(text, sessionId: _currentSessionId);
   }
 
   void stoplistening() {
-    hermesAsrStopListening(sessionId: _currentSessionId);
+    _hermesAsrStopListening(sessionId: _currentSessionId);
     if (audioStream != null) _streamActive = false;
   }
 
-  onReciviedMessages(List<MqttReceivedMessage<MqttMessage>> messages) {
+  _onReciviedMessages(List<MqttReceivedMessage<MqttMessage>> messages) {
     var lastMessage = messages[0];
     print("topic: ${lastMessage.topic}");
     if (lastMessage.topic.contains("hermes/audioServer/$siteId/playBytes/")) {
@@ -333,7 +341,7 @@ class RhasspyMqttApi {
       var buffer = recMessPayload.payload.message;
       onReceivedAudio(buffer.toList()).then((value) {
         if (value) {
-          hermesPlayFinished(lastMessage.topic.split("/").last);
+          _hermesPlayFinished(lastMessage.topic.split("/").last);
         }
       });
     }
@@ -344,9 +352,9 @@ class RhasspyMqttApi {
               recMessPayload.payload.message)));
       if (textCaptured.siteId == siteId) {
         onReceivedText(textCaptured);
-        if (_streamActive && (!isSessionStarted && audioStream == null)) {
-          stopRecording();
-        }
+        // if (_streamActive && !isSessionStarted) {
+        //   stopRecording();
+        // }
       }
     }
     if (lastMessage.topic == "hermes/dialogueManager/endSession") {
@@ -359,7 +367,8 @@ class RhasspyMqttApi {
         _intentHandled = true;
 
         if (!isSessionStarted) {
-          hermesTtsSay(endSession.text, sessionId: _currentSessionId);
+          _hermesTtsSay(endSession.text, sessionId: _currentSessionId);
+          stopRecording();
         }
         onReceivedEndSession(endSession);
         _currentSessionId = null;
@@ -375,11 +384,17 @@ class RhasspyMqttApi {
 
       if (continueSession.siteId == siteId) {
         _intentHandled = true;
-        if (!isSessionStarted)
-          hermesTtsSay(continueSession.text, sessionId: _currentSessionId);
+        if (!isSessionStarted) {
+          _hermesTtsSay(continueSession.text, sessionId: _currentSessionId);
+          _hermesAsrToggleOff();
+        }
         onReceivedContinueSession(continueSession);
-        if ((!isSessionStarted && audioStream != null) ||
-            _streamActive == false) startRecording();
+        startRecording().then((value) {
+          if (value && (!isSessionStarted)) {
+            _hermesAsrToggleOn();
+            _hermesAsrStartListening(sessionId: _currentSessionId);
+          }
+        });
       }
     }
     if (lastMessage.topic == "hermes/dialogueManager/startSession") {
@@ -422,49 +437,36 @@ class RhasspyMqttApi {
       HermesNluIntentParsed intentParsed = HermesNluIntentParsed.fromJson(
           json.decode(MqttPublishPayload.bytesToStringAsString(
               recMessPayload.payload.message)));
-      if (intentParsed.siteId == siteId) onReceivedIntent(intentParsed);
+      if (intentParsed.siteId == siteId) {
+        onReceivedIntent(intentParsed);
 
-      /// if the intent is to be managed
-      if (intentParsed.sessionId != null) {
-        Future.delayed(Duration(seconds: timeOutIntent), () {
-          if (_intentHandled) {
-            /// intent handled correctly
-            _intentHandled = false;
-          } else {
-            _currentSessionId = null;
-            _streamActive = false;
-            _countChunk = 0;
-            onTimeoutIntentHandle(intentParsed);
-          }
-        });
+        /// if the intent is to be managed
+        if (intentParsed.sessionId != null) {
+          Future.delayed(Duration(seconds: timeOutIntent), () {
+            if (_intentHandled) {
+              /// intent handled correctly
+              _intentHandled = false;
+            } else {
+              _currentSessionId = null;
+              _streamActive = false;
+              _countChunk = 0;
+              stopRecording();
+              onTimeoutIntentHandle(intentParsed);
+            }
+          });
+        }
       }
     }
   }
 
-  void resetSessionId() {
-    _currentSessionId = null;
-  }
-
-  void onDisconnected() {
-    print("Disconetted");
-    isConnected = false;
-  }
-
-  void onConnected() {
-    print("Conneted");
-    isConnected = true;
-  }
-
-  Future<void> disconnect() async {
+  void dispose() async {
     if (_audioStreamSubscription != null)
       await _audioStreamSubscription.cancel();
     if (ssl) _securityContext = null;
-    client.disconnect();
+    _client.disconnect();
   }
 
-  void onSubscribed(String topic) {}
-
-  void pong() {
+  void _pong() {
     print("pong");
   }
 }

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flushbar/flushbar_helper.dart';
@@ -5,8 +6,9 @@ import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:rhasspy_mobile_app/utilits/RhasspyApi.dart';
-import 'package:rhasspy_mobile_app/utilits/RhasspyMqttApi.dart';
+import 'package:rhasspy_mobile_app/utilits/RhasspyMqttIsolate.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:provider/provider.dart';
 
 class AppSettings extends StatefulWidget {
   static const String routeName = "/settings";
@@ -19,7 +21,7 @@ class AppSettings extends StatefulWidget {
 class _AppSettingsState extends State<AppSettings> {
   Future<SharedPreferences> _prefs = SharedPreferences.getInstance();
   TextEditingController rhasspyIpController;
-  RhasspyMqttApi rhasspyMqtt;
+  RhasspyMqttIsolate rhasspyMqtt;
   final _formKey = GlobalKey<FormState>();
 
   @override
@@ -27,6 +29,12 @@ class _AppSettingsState extends State<AppSettings> {
     return Scaffold(
       appBar: AppBar(
         title: Text("App Settings"),
+        leading: new IconButton(
+          icon: new Icon(Icons.arrow_back),
+          onPressed: () {
+            Navigator.pop(context);
+          },
+        ),
       ),
       body: FutureBuilder(
           future: _prefs,
@@ -166,6 +174,11 @@ class _AppSettingsState extends State<AppSettings> {
                 decoration: InputDecoration(
                   labelText: "Host",
                 ),
+                validator: (value) {
+                  if (value.isEmpty) {
+                    return "the field cannot be empty";
+                  }
+                },
               ),
             ),
             Padding(
@@ -184,7 +197,9 @@ class _AppSettingsState extends State<AppSettings> {
                   if (value.contains(",") || value.contains(".")) {
                     return "Only number";
                   }
-                  return null;
+                  if (value.isEmpty) {
+                    return "the field cannot be empty";
+                  }
                 },
                 onFieldSubmitted: (value) {
                   prefs.setInt("MQTTPORT", int.parse(value));
@@ -204,6 +219,11 @@ class _AppSettingsState extends State<AppSettings> {
                 onFieldSubmitted: (value) {
                   prefs.setString("MQTTUSERNAME", value.trim());
                 },
+                validator: (value) {
+                  if (value.isEmpty) {
+                    return "the field cannot be empty";
+                  }
+                },
                 decoration: InputDecoration(
                   labelText: "Username",
                 ),
@@ -216,7 +236,13 @@ class _AppSettingsState extends State<AppSettings> {
                   prefs.setString("MQTTPASSWORD", value.trim());
                 },
                 initialValue: prefs.getString("MQTTPASSWORD"),
+                // TODO add the possibility to see the password
                 obscureText: true,
+                validator: (value) {
+                  if (value.isEmpty) {
+                    return "the field cannot be empty";
+                  }
+                },
                 onFieldSubmitted: (value) {
                   prefs.setString("MQTTPASSWORD", value.trim());
                 },
@@ -232,6 +258,11 @@ class _AppSettingsState extends State<AppSettings> {
                   prefs.setString("SITEID", value.trim());
                 },
                 initialValue: prefs.getString("SITEID"),
+                validator: (value) {
+                  if (value.isEmpty) {
+                    return "the field cannot be empty";
+                  }
+                },
                 onFieldSubmitted: (value) {
                   prefs.setString("SITEID", value.trim());
                 },
@@ -292,45 +323,21 @@ class _AppSettingsState extends State<AppSettings> {
             ),
             FlatButton.icon(
               onPressed: () async {
-                _formKey.currentState.save();
-                String certificatePath;
-                if (prefs.getBool("MQTTSSL") ?? false) {
-                  Directory appDocDirectory =
-                      await getApplicationDocumentsDirectory();
-                  certificatePath =
-                      appDocDirectory.path + "/mqttCertificate.pem";
-                  if (!File(certificatePath).existsSync()) {
-                    certificatePath = null;
+                if (_formKey.currentState.validate()) {
+                  _formKey.currentState.save();
+                  rhasspyMqtt = context.read<RhasspyMqttIsolate>();
+                  if (rhasspyMqtt == null) {
+                    Timer.periodic(Duration(milliseconds: 5), (timer) {
+                      rhasspyMqtt = context.read<RhasspyMqttIsolate>();
+                      if (rhasspyMqtt != null) {
+                        _checkConnection(prefs);
+                        timer.cancel();
+                      }
+                    });
+                  } else {
+                    _checkConnection(prefs);
                   }
                 }
-                rhasspyMqtt = RhasspyMqttApi(
-                    prefs.getString("MQTTHOST"),
-                    prefs.getInt("MQTTPORT"),
-                    prefs.getBool("MQTTSSL") ?? false,
-                    prefs.getString("MQTTUSERNAME"),
-                    prefs.getString("MQTTPASSWORD"),
-                    prefs.getString("SITEID"),
-                    pemFilePath: certificatePath);
-                int result = await rhasspyMqtt.connect();
-                if (result == 0) {
-                  FlushbarHelper.createSuccess(
-                          message: "connection established with the broker")
-                      .show(context);
-                }
-                if (result == 1) {
-                  FlushbarHelper.createError(message: "failed to connect")
-                      .show(context);
-                }
-                if (result == 2) {
-                  FlushbarHelper.createError(message: "incorrect credentials")
-                      .show(context);
-                }
-                if (result == 3) {
-                  FlushbarHelper.createError(message: "untrusted certificate")
-                      .show(context);
-                }
-                if (rhasspyMqtt != null) await rhasspyMqtt.disconnect();
-                rhasspyMqtt = null;
               },
               icon: Icon(Icons.check),
               label: Text("Check connection"),
@@ -349,6 +356,42 @@ class _AppSettingsState extends State<AppSettings> {
         title: Text("Enable MQTT"),
         subtitle: Text("enable mqtt to get dialogue Manager support"),
       );
+    }
+  }
+
+  Future _checkConnection(SharedPreferences prefs) async {
+    String certificatePath;
+    if (prefs.getBool("MQTTSSL") ?? false) {
+      Directory appDocDirectory = await getApplicationDocumentsDirectory();
+      certificatePath = appDocDirectory.path + "/mqttCertificate.pem";
+      if (!File(certificatePath).existsSync()) {
+        certificatePath = null;
+      }
+    }
+    rhasspyMqtt.update(
+        prefs.getString("MQTTHOST"),
+        prefs.getInt("MQTTPORT"),
+        prefs.getBool("MQTTSSL") ?? false,
+        prefs.getString("MQTTUSERNAME"),
+        prefs.getString("MQTTPASSWORD"),
+        prefs.getString("SITEID"),
+        certificatePath);
+    int result = await rhasspyMqtt.connect();
+    if (result == 0) {
+      FlushbarHelper.createSuccess(
+              message: "connection established with the broker")
+          .show(context);
+    }
+    if (result == 1) {
+      FlushbarHelper.createError(message: "failed to connect").show(context);
+    }
+    if (result == 2) {
+      FlushbarHelper.createError(message: "incorrect credentials")
+          .show(context);
+    }
+    if (result == 3) {
+      FlushbarHelper.createError(message: "untrusted certificate")
+          .show(context);
     }
   }
 
