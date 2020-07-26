@@ -1,4 +1,4 @@
-class HermesTextCaptured {
+class AsrTextCaptured {
   String text;
   double likelihood;
   double seconds;
@@ -6,7 +6,7 @@ class HermesTextCaptured {
   String sessionId;
   String wakewordId;
 
-  HermesTextCaptured(
+  AsrTextCaptured(
       {this.text,
       this.likelihood,
       this.seconds,
@@ -14,7 +14,7 @@ class HermesTextCaptured {
       this.sessionId,
       this.wakewordId});
 
-  HermesTextCaptured.fromJson(Map<String, dynamic> json) {
+  AsrTextCaptured.fromJson(Map<String, dynamic> json) {
     text = json['text'];
     if (json['likelihood'] is double) {
       likelihood = json['likelihood'];
@@ -44,7 +44,7 @@ class HermesTextCaptured {
   }
 }
 
-class HermesNluIntentParsed {
+class NluIntentParsed {
   String input;
   Intent intent;
   String siteId;
@@ -52,7 +52,7 @@ class HermesNluIntentParsed {
   List<Slots> slots;
   String sessionId;
 
-  HermesNluIntentParsed(
+  NluIntentParsed(
       {this.input,
       this.intent,
       this.siteId,
@@ -60,7 +60,7 @@ class HermesNluIntentParsed {
       this.slots,
       this.sessionId});
 
-  HermesNluIntentParsed.fromJson(Map<String, dynamic> json) {
+  NluIntentParsed.fromJson(Map<String, dynamic> json) {
     input = json['input'];
     intent =
         json['intent'] != null ? new Intent.fromJson(json['intent']) : null;
@@ -195,15 +195,15 @@ class Range {
   }
 }
 
-class HermesEndSession {
+class DialogueEndSession {
   String sessionId;
   String siteId;
   String text;
   String customData;
 
-  HermesEndSession({this.sessionId, this.siteId, this.text, this.customData});
+  DialogueEndSession({this.sessionId, this.siteId, this.text, this.customData});
 
-  HermesEndSession.fromJson(Map<String, dynamic> json) {
+  DialogueEndSession.fromJson(Map<String, dynamic> json) {
     sessionId = json['sessionId'];
     siteId = json['siteId'];
     text = json['text'];
@@ -220,7 +220,7 @@ class HermesEndSession {
   }
 }
 
-class HermesContinueSession {
+class DialogueContinueSession {
   String sessionId;
   String siteId;
   String customData;
@@ -230,7 +230,7 @@ class HermesContinueSession {
   List<Slots> slot;
   String lang;
 
-  HermesContinueSession(
+  DialogueContinueSession(
       {this.sessionId,
       this.siteId,
       this.customData,
@@ -240,7 +240,7 @@ class HermesContinueSession {
       this.slot,
       this.lang});
 
-  HermesContinueSession.fromJson(Map<String, dynamic> json) {
+  DialogueContinueSession.fromJson(Map<String, dynamic> json) {
     sessionId = json['sessionId'];
     siteId = json['siteId'];
     customData = json['customData'];

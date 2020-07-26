@@ -11,10 +11,9 @@ import 'package:flutter/services.dart';
 import 'package:flutter_audio_recorder/flutter_audio_recorder.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:rhasspy_mobile_app/main.dart';
-import 'package:rhasspy_mobile_app/screens/AppSettings.dart';
-import 'package:rhasspy_mobile_app/utilits/RhasspyApi.dart';
-import 'package:rhasspy_mobile_app/utilits/RhasspyMqttIsolate.dart';
+import 'package:rhasspy_mobile_app/rhasspy_dart/rhasspy_api.dart';
+import 'package:rhasspy_mobile_app/rhasspy_dart/rhasspy_mqtt_isolate.dart';
+import 'package:rhasspy_mobile_app/screens/app_settings.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class HomePage extends StatefulWidget {
@@ -70,6 +69,8 @@ class _HomePageState extends State<HomePage> {
                 onPressed: () async {
                   if (!await _checkRhasspyIsReady() &&
                       (!(await _prefs).getBool("MQTT"))) {
+                    // if we have not set mqtt and we cannot
+                    // make a connection to rhasspy don't start recording
                     return;
                   }
                   if (await Permission.microphone.request().isGranted) {
@@ -113,6 +114,8 @@ class _HomePageState extends State<HomePage> {
                     onPressed: () async {
                       if (!((await _prefs).getBool("MQTT") ?? false)) {
                         if (!await _checkRhasspyIsReady()) {
+                          // if we have not set mqtt and we cannot
+                          // make a connection to rhasspy do not send text
                           return;
                         }
                         Uint8List audioData = await rhasspy
@@ -269,6 +272,9 @@ class _HomePageState extends State<HomePage> {
     } else {
       if (!((await _prefs).getBool("SILENCE") ?? false)) {
         if (!(await _checkMqtt(context))) {
+          // if we have sent the audio chunk we do not
+          // need to send the audio or if we are not
+          // connected with mqtt we cannot send the audio
           return;
         }
         rhasspyMqtt.speechTotext(File(result.path).readAsBytesSync(),
@@ -277,8 +283,9 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  Uint8List waveHeader(int totalAudioLen, int totalDataLen, int sampleRate,
-      int channels, int byteRate) {
+  Uint8List waveHeader(
+      int totalAudioLen, int sampleRate, int channels, int byteRate) {
+    int totalDataLen = totalAudioLen + 36;
     Uint8List header = Uint8List(44);
     header[0] = ascii.encode("R").first;
     header[1] = ascii.encode("I").first;
@@ -340,7 +347,10 @@ class _HomePageState extends State<HomePage> {
             prefs.containsKey("SILENCE") &&
             prefs.getBool("MQTT") &&
             prefs.getBool("SILENCE")) {
-          int previosLenght = 0;
+          // if silence is enabled we will record a chunk of audio then
+          // we will stream to "hermes/audioServer/$siteId/audioFrame"
+          int previousLength = 0;
+          // prepare the file that will contain the audio stream
           Directory appDocDirectory = await getApplicationDocumentsDirectory();
           String pathFile = appDocDirectory.path + "/speech_to_text.wav";
           if (File(pathFile).existsSync()) File(pathFile).deleteSync();
@@ -348,6 +358,7 @@ class _HomePageState extends State<HomePage> {
               FlutterAudioRecorder(pathFile, audioFormat: AudioFormat.WAV);
           await recorder.initialized;
           if (rhasspyMqtt == null) {
+            // if isolate is not yet ready wait
             await mqttReady.future;
           }
           if (!rhasspyMqtt.isConnected) {
@@ -357,6 +368,7 @@ class _HomePageState extends State<HomePage> {
             print("mqtt not ready");
             return;
           }
+          // start recording audio
           await recorder.start();
           setState(() {
             micColor = Colors.red;
@@ -365,21 +377,24 @@ class _HomePageState extends State<HomePage> {
           int chunkSize = 2048;
           int byteRate = (16000 * 16 * 1 ~/ 8);
           bool active = false;
+
           timerForAudio =
               Timer.periodic(Duration(milliseconds: 1), (Timer t) async {
-            int fileLenght;
+            int fileLength;
             try {
-              fileLenght = audioFile.lengthSync();
+              fileLength = audioFile.lengthSync();
             } on FileSystemException {
               t.cancel();
             }
-            if ((fileLenght - previosLenght) >= chunkSize) {
+            // if a Chunk is available to send
+            if ((fileLength - previousLength) >= chunkSize) {
               if (active) {
                 return;
               }
               active = true;
-              Stream<List<int>> dataStream =
-                  audioFile.openRead(previosLenght, previosLenght + chunkSize);
+              // start reading the last chunk
+              Stream<List<int>> dataStream = audioFile.openRead(
+                  previousLength, previousLength + chunkSize);
               List<int> dataFile = [];
               dataStream.listen(
                 (data) {
@@ -387,11 +402,12 @@ class _HomePageState extends State<HomePage> {
                 },
                 onDone: () {
                   if (dataFile.isNotEmpty) {
-                    print("previos lenght: $previosLenght");
-                    print("Lenght: $fileLenght");
-                    previosLenght += chunkSize;
-                    Uint8List header = waveHeader(
-                        chunkSize, chunkSize + 36, 16000, 1, byteRate);
+                    print("previous length: $previousLength");
+                    print("Length: $fileLength");
+                    previousLength += chunkSize;
+                    // append the header to the beginning of the chunk
+                    Uint8List header =
+                        waveHeader(chunkSize, 16000, 1, byteRate);
                     dataFile.insertAll(0, header);
                     audioStreamcontroller.add(Uint8List.fromList(dataFile));
                     active = false;
@@ -446,6 +462,7 @@ class _HomePageState extends State<HomePage> {
   void initState() {
     platform.setMethodCallHandler((call) async {
       if (call.method == "StartRecording") {
+        // called when you press on android widget
         _startRecording();
         return true;
       }
@@ -461,7 +478,6 @@ class _HomePageState extends State<HomePage> {
     textEditingController.dispose();
     audioStreamcontroller.close();
     audioPlayer.dispose();
-    rhasspyMqttIsolate.dispose();
     super.dispose();
   }
 
@@ -542,7 +558,7 @@ class _HomePageState extends State<HomePage> {
                 message:
                     "no one managed the intent: ${intentParsed.intent.intentName}")
             .show(context);
-        print("Impossible hadling intent: ${intentParsed.intent.intentName}");
+        print("Impossible handling intent: ${intentParsed.intent.intentName}");
       },
       stopRecording: () async {
         await _stopRecording();

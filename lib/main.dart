@@ -3,11 +3,11 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
-import 'package:rhasspy_mobile_app/screens/AppSettings.dart';
-import 'package:rhasspy_mobile_app/screens/HomePage.dart';
+import 'package:rhasspy_mobile_app/screens/app_settings.dart';
+import 'package:rhasspy_mobile_app/screens/home_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'utilits/RhasspyMqttIsolate.dart';
+import 'rhasspy_dart/rhasspy_mqtt_isolate.dart';
 
 RhasspyMqttIsolate rhasspyMqttIsolate;
 Future<RhasspyMqttIsolate> setupMqtt() async {

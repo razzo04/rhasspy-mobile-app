@@ -45,7 +45,7 @@ class RhasspyApi {
       client.badCertificateCallback =
           (X509Certificate cert, String host, int port) {
         if (cert.pem == pemCertificate) {
-          // Verify the certifte
+          // Verify the certificate
           return true;
         }
         return false;

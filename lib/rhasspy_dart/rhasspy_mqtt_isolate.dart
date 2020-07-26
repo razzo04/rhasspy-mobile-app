@@ -2,9 +2,9 @@ import 'dart:typed_data';
 
 import 'dart:async';
 import 'dart:isolate';
-import 'package:rhasspy_mobile_app/utilits/RhasspyMqttApi.dart';
 
-import 'JsonHelperClass.dart';
+import 'parse_messages.dart';
+import 'rhasspy_mqtt_api.dart';
 
 class RhasspyMqttIsolate implements RhasspyMqttApi {
   int port;
@@ -21,17 +21,20 @@ class RhasspyMqttIsolate implements RhasspyMqttApi {
   bool isSessionStarted = false;
   String pemFilePath;
   SendPort _sendPort;
+
+  /// the port to send message to isolate
+  SendPort get sendPort => _sendPort;
   Isolate _isolate;
   Completer<int> _connectCompleter = Completer<int>();
   final _isolateReady = Completer<void>();
   int timeOutIntent;
-  void Function(HermesNluIntentParsed) onReceivedIntent;
-  void Function(HermesTextCaptured) onReceivedText;
+  void Function(NluIntentParsed) onReceivedIntent;
+  void Function(AsrTextCaptured) onReceivedText;
 
   Future<bool> Function(List<int>) onReceivedAudio;
-  void Function(HermesEndSession) onReceivedEndSession;
-  void Function(HermesContinueSession) onReceivedContinueSession;
-  void Function(HermesNluIntentParsed) onTimeoutIntentHandle;
+  void Function(DialogueEndSession) onReceivedEndSession;
+  void Function(DialogueContinueSession) onReceivedContinueSession;
+  void Function(NluIntentParsed) onTimeoutIntentHandle;
   void Function() stopRecording;
   Future<bool> Function() startRecording;
   void Function(DialogueStartSession) onStartSession;
@@ -76,12 +79,12 @@ class RhasspyMqttIsolate implements RhasspyMqttApi {
   }
 
   void subscribeCallback({
-    void Function(HermesNluIntentParsed) onReceivedIntent,
-    void Function(HermesTextCaptured) onReceivedText,
+    void Function(NluIntentParsed) onReceivedIntent,
+    void Function(AsrTextCaptured) onReceivedText,
     Future<bool> Function(List<int>) onReceivedAudio,
-    void Function(HermesEndSession) onReceivedEndSession,
-    void Function(HermesContinueSession) onReceivedContinueSession,
-    void Function(HermesNluIntentParsed) onTimeoutIntentHandle,
+    void Function(DialogueEndSession) onReceivedEndSession,
+    void Function(DialogueContinueSession) onReceivedContinueSession,
+    void Function(NluIntentParsed) onTimeoutIntentHandle,
     void Function() onConnected,
     void Function() onDisconnected,
     void Function(DialogueStartSession) onStartSession,
