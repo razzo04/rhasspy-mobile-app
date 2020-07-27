@@ -16,9 +16,10 @@ class RhasspyMqttApi {
   String username;
   String password;
   String siteId;
-  MqttServerClient _client;
+  @visibleForTesting
+  MqttServerClient client;
   bool get isConnected {
-    MqttConnectionState state = _client.connectionStatus.state;
+    MqttConnectionState state = client.connectionStatus.state;
     if (state == MqttConnectionState.disconnected ||
         state == MqttConnectionState.disconnecting) {
       return false;
@@ -79,15 +80,15 @@ class RhasspyMqttApi {
       this.audioStream,
       this.stopRecording,
       this.pemFilePath}) {
-    _client =
+    client =
         MqttServerClient.withPort(host, siteId, port, maxConnectionAttempts: 1);
-    _client.keepAlivePeriod = 20;
-    _client.onConnected = onConnected;
-    _client.onDisconnected = onDisconnected;
-    _client.pongCallback = _pong;
+    client.keepAlivePeriod = 20;
+    client.onConnected = onConnected;
+    client.onDisconnected = onDisconnected;
+    client.pongCallback = _pong;
     if (ssl) {
-      _client.secure = true;
-      _client.onBadCertificate = (dynamic certificate) {
+      client.secure = true;
+      client.onBadCertificate = (dynamic certificate) {
         print("Bad certificate");
         return false;
       };
@@ -99,14 +100,14 @@ class RhasspyMqttApi {
         } on TlsException {}
       }
 
-      _client.securityContext = _securityContext;
+      client.securityContext = _securityContext;
     }
     final connMess = MqttConnectMessage()
         .withClientIdentifier(siteId)
         .keepAliveFor(20)
         .startClean()
         .withWillQos(MqttQos.atLeastOnce);
-    _client.connectionMessage = connMess;
+    client.connectionMessage = connMess;
     //TODO try not to lose Chunk
     bool isListening = false;
     if (audioStream != null) {
@@ -145,40 +146,40 @@ class RhasspyMqttApi {
   /// 3 bad certificate.
   Future<int> connect() async {
     try {
-      await _client.connect(username, password).timeout(Duration(seconds: 4));
+      await client.connect(username, password).timeout(Duration(seconds: 4));
     } on HandshakeException {
-      _client.disconnect();
+      client.disconnect();
       _completerConnected.complete(false);
       return 3;
     } catch (e) {}
-    if (_client.connectionStatus.state == MqttConnectionState.connected) {
+    if (client.connectionStatus.state == MqttConnectionState.connected) {
       print('Mosquitto client connected');
       _completerConnected.complete(true);
-      _client.updates.listen((value) => _onReceivedMessages(value));
-      _client.subscribe("hermes/audioServer/${siteId.trim()}/playBytes/#",
+      client.updates.listen((value) => onReceivedMessages(value));
+      client.subscribe("hermes/audioServer/${siteId.trim()}/playBytes/#",
           MqttQos.atLeastOnce);
-      _client.subscribe("hermes/asr/textCaptured", MqttQos.atLeastOnce);
-      _client.subscribe(
+      client.subscribe("hermes/asr/textCaptured", MqttQos.atLeastOnce);
+      client.subscribe(
           "hermes/dialogueManager/endSession", MqttQos.atLeastOnce);
-      _client.subscribe("hermes/nlu/intentParsed", MqttQos.atLeastOnce);
-      _client.subscribe(
+      client.subscribe("hermes/nlu/intentParsed", MqttQos.atLeastOnce);
+      client.subscribe(
           "hermes/dialogueManager/continueSession", MqttQos.atLeastOnce);
-      _client.subscribe(
+      client.subscribe(
           "hermes/dialogueManager/startSession", MqttQos.atLeastOnce);
-      _client.subscribe(
+      client.subscribe(
           "hermes/dialogueManager/sessionStarted", MqttQos.atLeastOnce);
-      _client.subscribe(
+      client.subscribe(
           "hermes/dialogueManager/sessionEnded", MqttQos.atLeastOnce);
       return 0;
-    } else if (_client.connectionStatus.returnCode ==
+    } else if (client.connectionStatus.returnCode ==
             MqttConnectReturnCode.badUsernameOrPassword ||
-        _client.connectionStatus.returnCode ==
+        client.connectionStatus.returnCode ==
             MqttConnectReturnCode.notAuthorized) {
-      _client.disconnect();
+      client.disconnect();
       _completerConnected.complete(false);
       return 2;
     } else {
-      _client.disconnect();
+      client.disconnect();
       _completerConnected.complete(false);
       return 1;
     }
@@ -187,14 +188,14 @@ class RhasspyMqttApi {
   void _publishString(String topic, [String data]) {
     final builder = MqttClientPayloadBuilder();
     if (data != null) builder.addUTF8String(data);
-    _client.publishMessage(topic, MqttQos.exactlyOnce, builder.payload);
+    client.publishMessage(topic, MqttQos.exactlyOnce, builder.payload);
   }
 
   void _publishBytes(String topic, Uint8List data) {
     var buffer = MqttByteBuffer.fromList(data);
     final builder = MqttClientPayloadBuilder();
     if (data != null) builder.addBuffer(buffer.buffer);
-    _client.publishMessage(topic, MqttQos.exactlyOnce, builder.payload);
+    client.publishMessage(topic, MqttQos.exactlyOnce, builder.payload);
   }
 
   void _asrStartListening(
@@ -347,7 +348,8 @@ class RhasspyMqttApi {
     if (audioStream != null) _streamActive = false;
   }
 
-  _onReceivedMessages(List<MqttReceivedMessage<MqttMessage>> messages) {
+  @visibleForTesting
+  onReceivedMessages(List<MqttReceivedMessage<MqttMessage>> messages) {
     var lastMessage = messages[0];
     print("topic: ${lastMessage.topic}");
     if (lastMessage.topic.contains("hermes/audioServer/$siteId/playBytes/")) {
@@ -483,8 +485,8 @@ class RhasspyMqttApi {
     if (_audioStreamSubscription != null)
       await _audioStreamSubscription.cancel();
     if (ssl) _securityContext = null;
-    _client.disconnect();
-    _client = null;
+    client.disconnect();
+    client = null;
   }
 
   void _pong() {

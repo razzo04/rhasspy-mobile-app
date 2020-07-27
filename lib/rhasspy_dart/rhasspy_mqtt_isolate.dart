@@ -6,7 +6,7 @@ import 'dart:isolate';
 import 'parse_messages.dart';
 import 'rhasspy_mqtt_api.dart';
 
-class RhasspyMqttIsolate implements RhasspyMqttApi {
+class RhasspyMqttIsolate {
   int port;
   String host;
   bool ssl;
