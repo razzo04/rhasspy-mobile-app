@@ -83,9 +83,10 @@ class RhasspyMqttApi {
     client =
         MqttServerClient.withPort(host, siteId, port, maxConnectionAttempts: 1);
     client.keepAlivePeriod = 20;
-    client.onConnected = onConnected;
+    client.onConnected = _onConnected;
     client.onDisconnected = onDisconnected;
     client.pongCallback = _pong;
+    client.autoReconnect = true;
     if (ssl) {
       client.secure = true;
       client.onBadCertificate = (dynamic certificate) {
@@ -155,21 +156,6 @@ class RhasspyMqttApi {
     if (client.connectionStatus.state == MqttConnectionState.connected) {
       print('Mosquitto client connected');
       _completerConnected.complete(true);
-      client.updates.listen((value) => onReceivedMessages(value));
-      client.subscribe("hermes/audioServer/${siteId.trim()}/playBytes/#",
-          MqttQos.atLeastOnce);
-      client.subscribe("hermes/asr/textCaptured", MqttQos.atLeastOnce);
-      client.subscribe(
-          "hermes/dialogueManager/endSession", MqttQos.atLeastOnce);
-      client.subscribe("hermes/nlu/intentParsed", MqttQos.atLeastOnce);
-      client.subscribe(
-          "hermes/dialogueManager/continueSession", MqttQos.atLeastOnce);
-      client.subscribe(
-          "hermes/dialogueManager/startSession", MqttQos.atLeastOnce);
-      client.subscribe(
-          "hermes/dialogueManager/sessionStarted", MqttQos.atLeastOnce);
-      client.subscribe(
-          "hermes/dialogueManager/sessionEnded", MqttQos.atLeastOnce);
       return 0;
     } else if (client.connectionStatus.returnCode ==
             MqttConnectReturnCode.badUsernameOrPassword ||
@@ -348,8 +334,7 @@ class RhasspyMqttApi {
     if (audioStream != null) _streamActive = false;
   }
 
-  @visibleForTesting
-  onReceivedMessages(List<MqttReceivedMessage<MqttMessage>> messages) {
+  _onReceivedMessages(List<MqttReceivedMessage<MqttMessage>> messages) {
     var lastMessage = messages[0];
     print("topic: ${lastMessage.topic}");
     if (lastMessage.topic.contains("hermes/audioServer/$siteId/playBytes/")) {
@@ -369,8 +354,9 @@ class RhasspyMqttApi {
               recMessPayload.payload.message)));
       if (textCaptured.siteId == siteId) {
         onReceivedText(textCaptured);
-        if (_streamActive && !isSessionStarted) {
-          stopRecording();
+        if (!isSessionStarted) {
+          // stopRecording();
+          _asrStopListening(sessionId: _currentSessionId);
         }
       }
     }
@@ -382,10 +368,9 @@ class RhasspyMqttApi {
 
       if (endSession.siteId == siteId) {
         _intentHandled = true;
-
+        stopRecording();
         if (!isSessionStarted) {
           _ttsSay(endSession.text, sessionId: _currentSessionId);
-          stopRecording();
         }
         onReceivedEndSession(endSession);
         _currentSessionId = null;
@@ -403,8 +388,8 @@ class RhasspyMqttApi {
       if (continueSession.siteId == siteId) {
         _intentHandled = true;
         if (!isSessionStarted) {
+          _asrStopListening();
           _ttsSay(continueSession.text, sessionId: _currentSessionId);
-          _asrToggleOff();
         }
         onReceivedContinueSession(continueSession);
         startRecording().then((value) {
@@ -446,8 +431,8 @@ class RhasspyMqttApi {
           json.decode(MqttPublishPayload.bytesToStringAsString(
               recMessPayload.payload.message)));
       if (sessionEnded.siteId == siteId) {
-        isSessionStarted = false;
         stopRecording();
+        isSessionStarted = false;
       }
     }
     if (lastMessage.topic == "hermes/nlu/intentParsed") {
@@ -491,5 +476,23 @@ class RhasspyMqttApi {
 
   void _pong() {
     print("pong");
+  }
+
+  void _onConnected() {
+    client.updates.listen((value) => _onReceivedMessages(value));
+    client.subscribe(
+        "hermes/audioServer/${siteId.trim()}/playBytes/#", MqttQos.atLeastOnce);
+    client.subscribe("hermes/asr/textCaptured", MqttQos.atLeastOnce);
+    client.subscribe("hermes/dialogueManager/endSession", MqttQos.atLeastOnce);
+    client.subscribe("hermes/nlu/intentParsed", MqttQos.atLeastOnce);
+    client.subscribe(
+        "hermes/dialogueManager/continueSession", MqttQos.atLeastOnce);
+    client.subscribe(
+        "hermes/dialogueManager/startSession", MqttQos.atLeastOnce);
+    client.subscribe(
+        "hermes/dialogueManager/sessionStarted", MqttQos.atLeastOnce);
+    client.subscribe(
+        "hermes/dialogueManager/sessionEnded", MqttQos.atLeastOnce);
+    onConnected();
   }
 }

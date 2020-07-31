@@ -13,7 +13,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:rhasspy_mobile_app/rhasspy_dart/rhasspy_api.dart';
 import 'package:rhasspy_mobile_app/rhasspy_dart/rhasspy_mqtt_isolate.dart';
 import 'package:rhasspy_mobile_app/screens/app_settings.dart';
-import 'package:rhasspy_mobile_app/utils/utils.dart';
+import 'package:rhasspy_mobile_app/utils/audio_recorder_isolate.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class HomePage extends StatefulWidget {
@@ -39,6 +39,7 @@ class _HomePageState extends State<HomePage> {
   Timer timerForAudio;
   Future<SharedPreferences> _prefs = SharedPreferences.getInstance();
   var _scaffoldKey = GlobalKey<ScaffoldState>();
+  AudioRecorderIsolate audioRecorderIsolate;
 
   @override
   Widget build(BuildContext context) {
@@ -67,6 +68,15 @@ class _HomePageState extends State<HomePage> {
                 color: micColor,
                 icon: Icon(Icons.mic),
                 onPressed: () async {
+                  if (((await _prefs).getBool("SILENCE") ?? false)) {
+                    if (await audioRecorderIsolate.isRecording) {
+                      _stopRecording();
+                      return;
+                    } else {
+                      _startRecording();
+                      return;
+                    }
+                  }
                   if (!await _checkRhasspyIsReady() &&
                       (!(await _prefs).getBool("MQTT"))) {
                     // if we have not set mqtt and we cannot
@@ -74,9 +84,6 @@ class _HomePageState extends State<HomePage> {
                     return;
                   }
                   if (await Permission.microphone.request().isGranted) {
-                    setState(() {
-                      micColor = Colors.red;
-                    });
                     if (recorder != null)
                       statusRecording = (await recorder.current()).status;
                     if (statusRecording == RecordingStatus.Unset ||
@@ -246,10 +253,19 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _stopRecording() async {
-    if (timerForAudio != null && timerForAudio.isActive) {
-      timerForAudio.cancel();
+    if (((await _prefs).getBool("SILENCE") ?? false)) {
+      audioRecorderIsolate.stopRecording();
       rhasspyMqtt.stoplistening();
+      setState(() {
+        micColor = Colors.black;
+      });
+      return;
     }
+
+    // if (timerForAudio != null && timerForAudio.isActive) {
+    //   timerForAudio.cancel();
+    //   rhasspyMqtt.stoplistening();
+    // }
     if (recorder == null) return;
     statusRecording = (await recorder.current()).status;
     if (statusRecording != RecordingStatus.Recording) {
@@ -288,7 +304,7 @@ class _HomePageState extends State<HomePage> {
     if (await Permission.microphone.request().isGranted) {
       if (recorder != null) statusRecording = (await recorder.current()).status;
       if (statusRecording == RecordingStatus.Recording) {
-        print("we are already recording");
+        print("already recording");
         return;
       }
       _prefs.then((prefs) async {
@@ -296,16 +312,10 @@ class _HomePageState extends State<HomePage> {
             prefs.containsKey("SILENCE") &&
             prefs.getBool("MQTT") &&
             prefs.getBool("SILENCE")) {
-          // if silence is enabled we will record a chunk of audio then
-          // we will stream to "hermes/audioServer/$siteId/audioFrame"
-          int previousLength = 0;
-          // prepare the file that will contain the audio stream
-          Directory appDocDirectory = await getApplicationDocumentsDirectory();
-          String pathFile = appDocDirectory.path + "/speech_to_text.wav";
-          if (File(pathFile).existsSync()) File(pathFile).deleteSync();
-          recorder =
-              FlutterAudioRecorder(pathFile, audioFormat: AudioFormat.WAV);
-          await recorder.initialized;
+          if (await audioRecorderIsolate?.isRecording) {
+            print("already recording");
+            return;
+          }
           if (rhasspyMqtt == null) {
             // if isolate is not yet ready wait
             await mqttReady.future;
@@ -317,53 +327,12 @@ class _HomePageState extends State<HomePage> {
             print("mqtt not ready");
             return;
           }
-          // start recording audio
-          await recorder.start();
+          print("Send port: ${rhasspyMqtt.sendPort}");
+          audioRecorderIsolate.setOtherIsolate(rhasspyMqtt.sendPort);
+          audioRecorderIsolate.startRecording();
+
           setState(() {
             micColor = Colors.red;
-          });
-          File audioFile = File(pathFile + ".temp");
-          int chunkSize = 2048;
-          int byteRate = (16000 * 16 * 1 ~/ 8);
-          bool active = false;
-
-          timerForAudio =
-              Timer.periodic(Duration(milliseconds: 1), (Timer t) async {
-            int fileLength;
-            try {
-              fileLength = audioFile.lengthSync();
-            } on FileSystemException {
-              t.cancel();
-            }
-            // if a Chunk is available to send
-            if ((fileLength - previousLength) >= chunkSize) {
-              if (active) {
-                return;
-              }
-              active = true;
-              // start reading the last chunk
-              Stream<List<int>> dataStream = audioFile.openRead(
-                  previousLength, previousLength + chunkSize);
-              List<int> dataFile = [];
-              dataStream.listen(
-                (data) {
-                  dataFile += data;
-                },
-                onDone: () async {
-                  if (dataFile.isNotEmpty) {
-                    print("previous length: $previousLength");
-                    print("Length: $fileLength");
-                    previousLength += chunkSize;
-                    // append the header to the beginning of the chunk
-                    Uint8List header =
-                        waveHeader(chunkSize, 16000, 1, byteRate);
-                    dataFile.insertAll(0, header);
-                    audioStreamcontroller.add(Uint8List.fromList(dataFile));
-                    active = false;
-                  }
-                },
-              );
-            }
           });
         } else {
           Directory appDocDirectory = await getApplicationDocumentsDirectory();
@@ -461,6 +430,14 @@ class _HomePageState extends State<HomePage> {
     if (rhasspyMqtt?.audioStream == audioStreamcontroller.stream) {
       print("already subscribe");
       return;
+    }
+    if (prefs.getBool("SILENCE") ?? false) {
+      audioRecorderIsolate = AudioRecorderIsolate();
+      rhasspyMqtt.connected.then((value) {
+        if (value) {
+          audioRecorderIsolate.setOtherIsolate(rhasspyMqtt.sendPort);
+        }
+      });
     }
     rhasspyMqtt.subscribeCallback(
       audioStream: prefs.getBool("SILENCE") ?? false

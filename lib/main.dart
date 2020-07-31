@@ -12,6 +12,7 @@ import 'rhasspy_dart/rhasspy_mqtt_isolate.dart';
 RhasspyMqttIsolate rhasspyMqttIsolate;
 Future<RhasspyMqttIsolate> setupMqtt() async {
   print("setup mqtt..");
+  if (rhasspyMqttIsolate != null) return rhasspyMqttIsolate;
   String certificatePath;
   WidgetsFlutterBinding.ensureInitialized();
   Directory appDocDirectory = await getApplicationDocumentsDirectory();
