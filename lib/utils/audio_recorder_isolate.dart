@@ -66,8 +66,10 @@ class AudioRecorderIsolate {
   }
 
   void stopRecording() {
-    _recorder.stop();
-    _sendPort.send("StopRecording");
+    if (_recorder != null) {
+      _recorder.stop();
+      _sendPort.send("StopRecording");
+    }
   }
 
   static Future<void> _isolateEntry(dynamic message) async {

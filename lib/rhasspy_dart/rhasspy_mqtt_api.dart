@@ -86,7 +86,7 @@ class RhasspyMqttApi {
     client.onConnected = _onConnected;
     client.onDisconnected = onDisconnected;
     client.pongCallback = _pong;
-    client.autoReconnect = true;
+    client.autoReconnect = false;
     if (ssl) {
       client.secure = true;
       client.onBadCertificate = (dynamic certificate) {

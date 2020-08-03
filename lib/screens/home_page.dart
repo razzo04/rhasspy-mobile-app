@@ -10,10 +10,12 @@ import 'package:flutter/services.dart';
 import 'package:flutter_audio_recorder/flutter_audio_recorder.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:rhasspy_mobile_app/rhasspy_dart/parse_messages.dart';
 import 'package:rhasspy_mobile_app/rhasspy_dart/rhasspy_api.dart';
 import 'package:rhasspy_mobile_app/rhasspy_dart/rhasspy_mqtt_isolate.dart';
 import 'package:rhasspy_mobile_app/screens/app_settings.dart';
 import 'package:rhasspy_mobile_app/utils/audio_recorder_isolate.dart';
+import 'package:rhasspy_mobile_app/widget/Intent_viewer.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class HomePage extends StatefulWidget {
@@ -40,6 +42,7 @@ class _HomePageState extends State<HomePage> {
   Future<SharedPreferences> _prefs = SharedPreferences.getInstance();
   var _scaffoldKey = GlobalKey<ScaffoldState>();
   AudioRecorderIsolate audioRecorderIsolate;
+  NluIntentParsed intent;
 
   @override
   Widget build(BuildContext context) {
@@ -215,7 +218,8 @@ class _HomePageState extends State<HomePage> {
               },
               icon: Icon(Icons.play_arrow),
               label: Text("Play last voice command"),
-            )
+            ),
+            IntentViewer(intent),
           ],
         ),
       ),
@@ -472,6 +476,9 @@ class _HomePageState extends State<HomePage> {
       },
       onReceivedIntent: (intentParsed) {
         print("Recognized intent: ${intentParsed.intent.intentName}");
+        setState(() {
+          intent = intentParsed;
+        });
       },
       onReceivedEndSession: (endSession) {
         print(endSession.text);
