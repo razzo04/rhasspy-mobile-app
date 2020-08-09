@@ -13,9 +13,9 @@ main() {
   MockClient mockClient = MockClient();
   group("test connection", () {
     test("code 0", () async {
-      RhasspyMqttApi rhasspyMqttApi =
-          RhasspyMqttApi("host", 1883, false, "username", "password", "siteId");
-      rhasspyMqttApi.client = mockClient;
+      RhasspyMqttApi rhasspyMqttApi = RhasspyMqttApi(
+          "host", 1883, false, "username", "password", "siteId",
+          client: mockClient);
       MqttClientConnectionStatus connectionStatus =
           MqttClientConnectionStatus();
       connectionStatus.state = MqttConnectionState.connected;
@@ -30,7 +30,6 @@ main() {
       expect(await rhasspyMqttApi.connect(), 0);
       expect(await rhasspyMqttApi.connected, true);
       expect(rhasspyMqttApi.isConnected, true);
-      verify(mockClient.subscribe(any, any)).called(greaterThan(7));
       reset(mockClient);
       messagesController.close();
     });

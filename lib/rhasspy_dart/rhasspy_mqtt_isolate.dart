@@ -26,7 +26,7 @@ class RhasspyMqttIsolate {
   SendPort get sendPort => _sendPort;
   Isolate _isolate;
   Completer<int> _connectCompleter = Completer<int>();
-  final _isolateReady = Completer<void>();
+  Completer<void> _isolateReady = Completer<void>();
   int timeOutIntent;
   void Function(NluIntentParsed) onReceivedIntent;
   void Function(AsrTextCaptured) onReceivedText;
@@ -43,7 +43,7 @@ class RhasspyMqttIsolate {
 
   @override
   Future<bool> get connected async {
-    if (await _connectCompleter.future == 0) {
+    if ((await _connectCompleter.future) == 0) {
       return true;
     } else {
       return false;
@@ -109,7 +109,9 @@ class RhasspyMqttIsolate {
   }
 
   Future<int> connect() async {
-    await _isolateReady.future;
+    if (_sendPort == null) {
+      await _isolateReady.future;
+    }
     _sendPort.send("connect");
     return _connectCompleter.future;
   }
@@ -156,6 +158,7 @@ class RhasspyMqttIsolate {
     if (message is SendPort) {
       _sendPort = message;
       _isolateReady.complete();
+      _isolateReady = Completer();
       return;
     }
     if (message is String) {
@@ -171,6 +174,8 @@ class RhasspyMqttIsolate {
           break;
         case "onConnected":
           _isConnected = true;
+          _connectCompleter.complete(0);
+          _connectCompleter = Completer<int>();
           if (onConnected != null) onConnected();
           break;
         case "onDisconnected":
@@ -293,6 +298,9 @@ class RhasspyMqttIsolate {
             case "stoplistening":
               rhasspyMqtt.stoplistening();
               break;
+            case "cleanSession":
+              rhasspyMqtt.cleanSession();
+              break;
             default:
               throw UnimplementedError(
                   "Undefined behavior for message: $message");
@@ -360,6 +368,10 @@ class RhasspyMqttIsolate {
     _sendPort.send({
       "textToSpeech": {"text": text, "generateSessionId": generateSessionId}
     });
+  }
+
+  void cleanSession() {
+    _sendPort.send("cleanSession");
   }
 }
 

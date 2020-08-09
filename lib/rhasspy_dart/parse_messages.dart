@@ -159,7 +159,7 @@ class Value {
 
   Value.fromJson(Map<String, dynamic> json) {
     kind = json['kind'];
-    value = json['value'];
+    value = json['value'].toString();
   }
 
   Map<String, dynamic> toJson() {

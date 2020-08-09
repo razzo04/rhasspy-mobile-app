@@ -61,16 +61,35 @@ class _AppSettingsState extends State<AppSettings> {
                             rhasspyIpController.text = value;
                           });
                         }
+                        SecurityContext securityContext =
+                            SecurityContext.defaultContext;
+                        Directory appDocDirectory =
+                            await getApplicationDocumentsDirectory();
+                        String certificatePath =
+                            appDocDirectory.path + "/SslCertificate.pem";
+                        try {
+                          if (File(certificatePath).existsSync())
+                            securityContext
+                                .setTrustedCertificates(certificatePath);
+                        } on TlsException {}
+
                         String ip = value.split(":").first;
                         int port = int.parse(value.split(":").last);
                         RhasspyApi rhasspy = RhasspyApi(
                             ip, port, prefs.getBool("SSL"),
-                            pemCertificate: prefs.getString("PEMCertificate"));
-                        if (!(await rhasspy.checkConnection())) {
+                            securityContext: securityContext);
+                        int result = await rhasspy.checkConnection();
+                        print(result);
+                        if (result == 1) {
                           FlushbarHelper.createError(
                                   message: "cannot connect with rhasspy")
                               .show(context);
-                        } else {
+                        }
+                        if (result == 2) {
+                          FlushbarHelper.createError(message: "bad certificate")
+                              .show(context);
+                        }
+                        if (result == 0) {
                           FlushbarHelper.createSuccess(
                                   message: "successful connection with rhasspy")
                               .show(context);
@@ -104,8 +123,18 @@ class _AppSettingsState extends State<AppSettings> {
                         if (await Permission.storage.request().isGranted) {
                           File certificate = await FilePicker.getFile();
                           if (certificate != null) {
-                            prefs.setString("PEMCertificate",
-                                certificate.readAsStringSync());
+                            Directory appDocDirectory =
+                                await getApplicationDocumentsDirectory();
+                            String pathFile =
+                                appDocDirectory.path + "/SslCertificate.pem";
+                            try {
+                              certificate.copySync(pathFile);
+                            } catch (e) {
+                              FlushbarHelper.createError(
+                                      message: "cannot save the certificate")
+                                  .show(context);
+                              return;
+                            }
                             FlushbarHelper.createSuccess(
                                     message: "certificate added correctly")
                                 .show(context);
@@ -189,7 +218,6 @@ class _AppSettingsState extends State<AppSettings> {
                 initialValue: prefs.getInt("MQTTPORT") != null
                     ? prefs.getInt("MQTTPORT").toString()
                     : "",
-                autovalidate: true,
                 onSaved: (value) {
                   prefs.setInt("MQTTPORT", int.parse(value));
                 },
@@ -390,8 +418,7 @@ class _AppSettingsState extends State<AppSettings> {
           .show(context);
     }
     if (result == 3) {
-      FlushbarHelper.createError(message: "untrusted certificate")
-          .show(context);
+      FlushbarHelper.createError(message: "bad certificate").show(context);
     }
   }
 
