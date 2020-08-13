@@ -326,6 +326,7 @@ class RhasspyMqttApi {
   /// after can be received by the function [onReceivedIntent].
   /// if [handle] is equally true the intent can be handle
   void textToIntent(String text, {bool handle = true}) {
+    if (isSessionStarted) return;
     if (handle) {
       if (_currentSessionId == null) _currentSessionId = _generateId();
     } else {
@@ -359,7 +360,6 @@ class RhasspyMqttApi {
   _onReceivedMessages(List<MqttReceivedMessage<MqttMessage>> messages) {
     var lastMessage = messages[0];
     print("topic: ${lastMessage.topic}");
-    _publishString("$siteId/received topic", lastMessage.topic);
     if (lastMessage.topic.contains("hermes/audioServer/$siteId/playBytes/")) {
       print("recivied audio");
       final MqttPublishMessage recMessPayload = lastMessage.payload;
@@ -378,7 +378,6 @@ class RhasspyMqttApi {
       if (textCaptured.siteId == siteId) {
         onReceivedText(textCaptured);
         if (!isSessionStarted) {
-          // stopRecording();
           _asrStopListening(sessionId: _currentSessionId);
         }
       }
@@ -412,12 +411,13 @@ class RhasspyMqttApi {
         _intentHandled = true;
         if (!isSessionStarted) {
           _asrStopListening();
+          _asrToggleOff(reason: "ttsSay");
           _ttsSay(continueSession.text, sessionId: _currentSessionId);
         }
         onReceivedContinueSession(continueSession);
         startRecording().then((value) {
           if (value && (!isSessionStarted)) {
-            _asrToggleOn();
+            _asrToggleOn(reason: "ttsSay");
             _asrStartListening(sessionId: _currentSessionId);
           }
         });

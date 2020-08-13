@@ -38,7 +38,9 @@ class AudioRecorderIsolate {
     errorPort.listen(print);
     receivePort.listen(_handleMessage);
     _isolate = await Isolate.spawn(_isolateEntry, receivePort.sendPort,
-        onError: errorPort.sendPort, debugName: "recorder");
+        onError: errorPort.sendPort,
+        debugName: "recorder",
+        errorsAreFatal: false);
   }
 
   Future<void> setOtherIsolate([SendPort otherIsolate]) async {

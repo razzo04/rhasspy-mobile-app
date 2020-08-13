@@ -536,7 +536,7 @@ class _HomePageState extends State<HomePage> {
         setState(() {
           textEditingController.text = textCapture.text;
         });
-        if (handle && !rhasspyMqtt.isSessionStarted) {
+        if (handle) {
           rhasspyMqtt.textToIntent(textCapture.text, handle: handle);
         }
       },
