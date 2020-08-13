@@ -38,4 +38,3 @@ flutter build ios
 # TODO 
 
  - Wake word
- - Intent display
