@@ -74,7 +74,7 @@ class RhasspyApi {
   Future<NluIntentParsed> textToIntent(String text) async {
     Response response = await dio.post("/api/text-to-intent",
         data: text,
-        queryParameters: {"outputFormat": "hermes"},
+        queryParameters: {"outputFormat": "hermes", "nohass": false},
         options: Options(responseType: ResponseType.json));
     return NluIntentParsed.fromJson(response.data["value"]);
   }

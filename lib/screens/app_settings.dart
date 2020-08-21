@@ -23,6 +23,7 @@ class _AppSettingsState extends State<AppSettings> {
   TextEditingController rhasspyIpController;
   RhasspyMqttIsolate rhasspyMqtt;
   final _formKey = GlobalKey<FormState>();
+  bool _passwordVisible = false;
 
   @override
   Widget build(BuildContext context) {
@@ -259,24 +260,36 @@ class _AppSettingsState extends State<AppSettings> {
             ),
             Padding(
               padding: const EdgeInsets.only(left: 16),
-              child: TextFormField(
-                onSaved: (value) {
-                  prefs.setString("MQTTPASSWORD", value.trim());
-                },
-                initialValue: prefs.getString("MQTTPASSWORD"),
-                // TODO add the possibility to see the password
-                obscureText: true,
-                validator: (value) {
-                  if (value.isEmpty) {
-                    return "the field cannot be empty";
-                  }
-                },
-                onFieldSubmitted: (value) {
-                  prefs.setString("MQTTPASSWORD", value.trim());
-                },
-                decoration: InputDecoration(
-                  labelText: "Password",
-                ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: TextFormField(
+                      onSaved: (value) {
+                        prefs.setString("MQTTPASSWORD", value.trim());
+                      },
+                      initialValue: prefs.getString("MQTTPASSWORD"),
+                      obscureText: !_passwordVisible,
+                      validator: (value) {
+                        if (value.isEmpty) {
+                          return "the field cannot be empty";
+                        }
+                      },
+                      onFieldSubmitted: (value) {
+                        prefs.setString("MQTTPASSWORD", value.trim());
+                      },
+                      decoration: InputDecoration(
+                        labelText: "Password",
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                      icon: Icon(_passwordVisible
+                          ? Icons.visibility_off
+                          : Icons.visibility),
+                      onPressed: () {
+                        setState(() => _passwordVisible = !_passwordVisible);
+                      })
+                ],
               ),
             ),
             Padding(
@@ -318,6 +331,15 @@ class _AppSettingsState extends State<AppSettings> {
               },
               title: Text("Enable SSL"),
               subtitle: Text("enable secure connections for mqtt"),
+            ),
+            SwitchListTile.adaptive(
+              value: prefs.getBool("NOTIFICATION") ?? false,
+              onChanged: (bool value) {
+                setState(() {});
+              },
+              title: Text("enable notification"),
+              subtitle: Text(
+                  "when a notification start session arrives a notification will be sent"),
             ),
             FlatButton(
               onPressed: () async {

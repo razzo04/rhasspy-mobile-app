@@ -30,7 +30,7 @@ class RhasspyMqttIsolate {
   int timeOutIntent;
   void Function(NluIntentParsed) onReceivedIntent;
   void Function(AsrTextCaptured) onReceivedText;
-
+  void Function(NluIntentNotRecognized) onIntentNotRecognized;
   Future<bool> Function(List<int>) onReceivedAudio;
   void Function(DialogueEndSession) onReceivedEndSession;
   void Function(DialogueContinueSession) onReceivedContinueSession;
@@ -61,6 +61,7 @@ class RhasspyMqttIsolate {
       this.onReceivedEndSession,
       this.onReceivedContinueSession,
       this.onTimeoutIntentHandle,
+      this.onIntentNotRecognized,
       this.onConnected,
       this.onDisconnected,
       this.onStartSession,
@@ -85,6 +86,7 @@ class RhasspyMqttIsolate {
     void Function(DialogueEndSession) onReceivedEndSession,
     void Function(DialogueContinueSession) onReceivedContinueSession,
     void Function(NluIntentParsed) onTimeoutIntentHandle,
+    void Function(NluIntentNotRecognized) onIntentNotRecognized,
     void Function() onConnected,
     void Function() onDisconnected,
     void Function(DialogueStartSession) onStartSession,
@@ -98,6 +100,8 @@ class RhasspyMqttIsolate {
     this.onReceivedEndSession = onReceivedEndSession;
     this.onReceivedContinueSession = onReceivedContinueSession;
     this.onTimeoutIntentHandle = onTimeoutIntentHandle;
+    this.onIntentNotRecognized = onIntentNotRecognized;
+    this.onStartSession = onStartSession;
     this.onConnected = onConnected;
     this.onDisconnected = onDisconnected;
     this.startRecording = startRecording;
@@ -218,6 +222,9 @@ class RhasspyMqttIsolate {
       if (message.containsKey("isSessionStarted")) {
         isSessionStarted = message["isSessionStarted"];
       }
+      if (message.containsKey("onIntentNotRecognized")) {
+        onIntentNotRecognized(message["onIntentNotRecognized"]);
+      }
     }
   }
 
@@ -231,63 +238,47 @@ class RhasspyMqttIsolate {
 
     receivePort.listen(
       (dynamic message) async {
-        // print("Isolate message: is a instance of ${message.runtimeType}");
         if (message is RhasspyMqttArguments) {
           if (rhasspyMqtt != null) {
             rhasspyMqtt.dispose();
             audioStream.close();
             audioStream = StreamController();
           }
-          rhasspyMqtt = RhasspyMqttApi(
-            message.host,
-            message.port,
-            message.ssl,
-            message.username,
-            message.password,
-            message.siteId,
-            timeOutIntent: message.timeOutIntent,
-            pemFilePath: message.pemFilePath,
-            audioStream: audioStream.stream,
-            onReceivedAudio: (value) async {
-              print("onReceivedAudio isolate");
-              sendPort.send({"onReceivedAudio": value});
-              return _receivedAudio.future;
-            },
-            onReceivedText: (textCapture) {
-              sendPort.send({"onReceivedText": textCapture});
-            },
-            onReceivedIntent: (intentParsed) {
-              sendPort.send({"onReceivedIntent": intentParsed});
-            },
-            onReceivedEndSession: (endSession) {
-              sendPort.send({"onReceivedEndSession": endSession});
-              sendPort.send({"isSessionStarted": false});
-            },
-            onReceivedContinueSession: (continueSession) {
-              sendPort.send({"onReceivedContinueSession": continueSession});
-            },
-            onTimeoutIntentHandle: (intentParsed) {
-              sendPort.send({"onTimeoutIntentHandle": intentParsed});
-            },
-            onConnected: () {
-              sendPort.send("onConnected");
-            },
-            onDisconnected: () {
-              sendPort.send("onDisconnected");
-            },
-            onStartSession: (startSession) {
-              sendPort.send({"onStartSession": startSession});
-              //TODO get isSessionStarted directly
-              sendPort.send({"isSessionStarted": rhasspyMqtt.isSessionStarted});
-            },
-            stopRecording: () {
-              sendPort.send("stopRecording");
-            },
-            startRecording: () {
-              sendPort.send("startRecording");
-              return _startRecordingCompleter.future;
-            },
-          );
+          rhasspyMqtt = RhasspyMqttApi(message.host, message.port, message.ssl,
+              message.username, message.password, message.siteId,
+              timeOutIntent: message.timeOutIntent,
+              pemFilePath: message.pemFilePath,
+              audioStream: audioStream.stream, onReceivedAudio: (value) async {
+            print("onReceivedAudio isolate");
+            sendPort.send({"onReceivedAudio": value});
+            return _receivedAudio.future;
+          }, onReceivedText: (textCapture) {
+            sendPort.send({"onReceivedText": textCapture});
+          }, onReceivedIntent: (intentParsed) {
+            sendPort.send({"onReceivedIntent": intentParsed});
+          }, onReceivedEndSession: (endSession) {
+            sendPort.send({"onReceivedEndSession": endSession});
+            sendPort.send({"isSessionStarted": false});
+          }, onReceivedContinueSession: (continueSession) {
+            sendPort.send({"onReceivedContinueSession": continueSession});
+          }, onTimeoutIntentHandle: (intentParsed) {
+            sendPort.send({"onTimeoutIntentHandle": intentParsed});
+          }, onConnected: () {
+            sendPort.send("onConnected");
+          }, onDisconnected: () {
+            sendPort.send("onDisconnected");
+          }, onStartSession: (startSession) {
+            sendPort.send({"onStartSession": startSession});
+            //TODO get isSessionStarted directly
+            sendPort.send({"isSessionStarted": rhasspyMqtt.isSessionStarted});
+          }, stopRecording: () {
+            sendPort.send("stopRecording");
+          }, startRecording: () {
+            sendPort.send("startRecording");
+            return _startRecordingCompleter.future;
+          }, onIntentNotRecognized: (intent) {
+            sendPort.send({"onIntentNotRecognized": intent});
+          });
         }
         if (message is String) {
           switch (message) {

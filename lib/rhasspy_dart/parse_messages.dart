@@ -392,3 +392,32 @@ class Termination {
     return data;
   }
 }
+
+class NluIntentNotRecognized {
+  String input;
+  String siteId;
+  String id;
+  String customData;
+  String sessionId;
+
+  NluIntentNotRecognized(
+      {this.input, this.siteId, this.id, this.customData, this.sessionId});
+
+  NluIntentNotRecognized.fromJson(Map<String, dynamic> json) {
+    input = json['input'];
+    siteId = json['siteId'];
+    id = json['id'];
+    customData = json['customData'];
+    sessionId = json['sessionId'];
+  }
+
+  Map<String, dynamic> toJson() {
+    final Map<String, dynamic> data = new Map<String, dynamic>();
+    data['input'] = this.input;
+    data['siteId'] = this.siteId;
+    data['id'] = this.id;
+    data['customData'] = this.customData;
+    data['sessionId'] = this.sessionId;
+    return data;
+  }
+}

@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math';
 import 'dart:typed_data';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:provider/provider.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:file_picker/file_picker.dart';
@@ -44,6 +46,7 @@ class _HomePageState extends State<HomePage> {
   var _scaffoldKey = GlobalKey<ScaffoldState>();
   AudioRecorderIsolate audioRecorderIsolate;
   NluIntentParsed intent;
+  FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin;
 
   @override
   Widget build(BuildContext context) {
@@ -358,7 +361,10 @@ class _HomePageState extends State<HomePage> {
           }
 
           if (!rhasspyMqtt.isConnected) {
-            await rhasspyMqtt.connected;
+            await rhasspyMqtt.connected.timeout(
+              Duration(seconds: 4),
+              onTimeout: () => null,
+            );
           }
 
           if (!(await _checkMqtt(context))) {
@@ -455,12 +461,41 @@ class _HomePageState extends State<HomePage> {
     });
     _setupMqtt();
     _setup();
+    _setupNotification();
     super.initState();
+  }
+
+  void _setupNotification() {
+    flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
+    var initializationSettingsAndroid =
+        AndroidInitializationSettings('app_icon');
+    var initializationSettingsIOS = IOSInitializationSettings(
+      requestAlertPermission: false,
+      requestBadgePermission: false,
+      requestSoundPermission: false,
+    );
+    var initializationSettings = InitializationSettings(
+        initializationSettingsAndroid, initializationSettingsIOS);
+    flutterLocalNotificationsPlugin.initialize(initializationSettings);
+  }
+
+  void _showNotification(String title, String body,
+      {String channelId = "1",
+      String channelName = "Notification",
+      String channelDescription = "Notification",
+      String payload}) async {
+    var androidPlatformChannelSpecifics = AndroidNotificationDetails(
+        channelId, channelName, channelDescription,
+        importance: Importance.Max, priority: Priority.High);
+    var iOSPlatformChannelSpecifics = IOSNotificationDetails();
+    var platformChannelSpecifics = NotificationDetails(
+        androidPlatformChannelSpecifics, iOSPlatformChannelSpecifics);
+    await flutterLocalNotificationsPlugin.show(
+        Random().nextInt(1000), title, body, platformChannelSpecifics);
   }
 
   @override
   void dispose() {
-    rhasspyMqtt.dispose();
     textEditingController.dispose();
     audioStreamcontroller.close();
     audioPlayer.dispose();
@@ -536,9 +571,7 @@ class _HomePageState extends State<HomePage> {
         setState(() {
           textEditingController.text = textCapture.text;
         });
-        if (handle) {
-          rhasspyMqtt.textToIntent(textCapture.text, handle: handle);
-        }
+        rhasspyMqtt.textToIntent(textCapture.text, handle: handle);
       },
       onReceivedIntent: (intentParsed) {
         print("Recognized intent: ${intentParsed.intent.intentName}");
@@ -567,6 +600,16 @@ class _HomePageState extends State<HomePage> {
         await audioPlayer.onPlayerCompletion.first;
         _startRecording();
         return true;
+      },
+      onIntentNotRecognized: (intent) {
+        FlushbarHelper.createError(message: "IntentNotRecognized")
+            .show(context);
+      },
+      onStartSession: (startSession) async {
+        if (startSession.init.type == "notification" &&
+            ((await _prefs).getBool("NOTIFICATION") ?? false)) {
+          _showNotification("Notification", startSession.init.text);
+        }
       },
     );
   }

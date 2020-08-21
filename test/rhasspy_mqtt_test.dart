@@ -24,11 +24,13 @@ main() {
       StreamController<List<MqttReceivedMessage<MqttMessage>>>
           messagesController = StreamController();
       when(mockClient.updates).thenAnswer((_) => messagesController.stream);
-      when(mockClient.connect())
+      rhasspyMqttApi.connected.then((value) {
+        expect(value, true);
+      });
+      when(mockClient.connect(any, any))
           .thenAnswer((_) => Future.value(connectionStatus));
       when(mockClient.connectionStatus).thenReturn(connectionStatus);
       expect(await rhasspyMqttApi.connect(), 0);
-      expect(await rhasspyMqttApi.connected, true);
       expect(rhasspyMqttApi.isConnected, true);
       reset(mockClient);
       messagesController.close();
@@ -45,8 +47,10 @@ main() {
       when(mockClient.connect())
           .thenAnswer((_) => Future.value(connectionStatus));
       when(mockClient.connectionStatus).thenReturn(connectionStatus);
+      rhasspyMqttApi.connected.then((value) {
+        expect(value, false);
+      });
       expect(await rhasspyMqttApi.connect(), 1);
-      expect(await rhasspyMqttApi.connected, false);
       expect(rhasspyMqttApi.isConnected, false);
       verifyNever(mockClient.subscribe(any, any));
       reset(mockClient);
@@ -65,8 +69,10 @@ main() {
           .thenAnswer((_) => Future.value(connectionStatus));
 
       when(mockClient.connectionStatus).thenReturn(connectionStatus);
+      rhasspyMqttApi.connected.then((value) {
+        expect(value, false);
+      });
       expect(await rhasspyMqttApi.connect(), 2);
-      expect(await rhasspyMqttApi.connected, false);
       expect(rhasspyMqttApi.isConnected, false);
       verifyNever(mockClient.subscribe(any, any));
       reset(mockClient);
@@ -82,8 +88,11 @@ main() {
       connectionStatus.returnCode = MqttConnectReturnCode.noneSpecified;
       when(mockClient.connect(any, any)).thenThrow(HandshakeException());
       when(mockClient.connectionStatus).thenReturn(connectionStatus);
+      when(mockClient.connectionStatus).thenReturn(connectionStatus);
+      rhasspyMqttApi.connected.then((value) {
+        expect(value, false);
+      });
       expect(await rhasspyMqttApi.connect(), 3);
-      expect(await rhasspyMqttApi.connected, false);
       expect(rhasspyMqttApi.isConnected, false);
       verify(mockClient.disconnect()).called(1);
       verifyNever(mockClient.subscribe(any, any));

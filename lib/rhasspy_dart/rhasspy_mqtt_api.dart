@@ -30,7 +30,8 @@ class RhasspyMqttApi {
 
   bool _intentHandled = false;
   bool _streamActive = false;
-  bool _badCertificate;
+  bool _badCertificate = false;
+  bool _intentNeedHandle = true;
 
   /// becomes true when there is an active session.
   bool isSessionStarted = false;
@@ -56,6 +57,7 @@ class RhasspyMqttApi {
   void Function(DialogueEndSession) onReceivedEndSession;
   void Function(DialogueContinueSession) onReceivedContinueSession;
   void Function(NluIntentParsed) onTimeoutIntentHandle;
+  void Function(NluIntentNotRecognized) onIntentNotRecognized;
   void Function() stopRecording;
 
   /// call when there is a need to record audio.
@@ -74,6 +76,7 @@ class RhasspyMqttApi {
       this.onReceivedEndSession,
       this.onReceivedContinueSession,
       this.onTimeoutIntentHandle,
+      this.onIntentNotRecognized,
       this.onConnected,
       this.onDisconnected,
       this.onStartSession,
@@ -164,7 +167,6 @@ class RhasspyMqttApi {
       client.updates.listen((value) => _onReceivedMessages(value));
       _completerConnected.complete(true);
       _completerConnected = Completer<bool>();
-
       return 0;
     } else if (client.connectionStatus.returnCode ==
             MqttConnectReturnCode.badUsernameOrPassword ||
@@ -298,9 +300,18 @@ class RhasspyMqttApi {
   }
 
   void _playFinished(String requestId, {String sessionId}) {
-    print("Play finish");
     _publishString("hermes/audioServer/$siteId/playFinished",
         json.encode({"id": requestId, "sessionId": sessionId ?? ""}));
+  }
+
+  void _handleToggleOff() {
+    print("Play finish");
+    _publishString("rhasspy/handle/toggleOff", json.encode({"siteId": siteId}));
+  }
+
+  void _handleToggleOn() {
+    print("Play finish");
+    _publishString("rhasspy/handle/toggleOn", json.encode({"siteId": siteId}));
   }
 
   void _nluQuery(String input,
@@ -326,10 +337,13 @@ class RhasspyMqttApi {
   /// after can be received by the function [onReceivedIntent].
   /// if [handle] is equally true the intent can be handle
   void textToIntent(String text, {bool handle = true}) {
+    // TODO Handle intent
     if (isSessionStarted) return;
     if (handle) {
       if (_currentSessionId == null) _currentSessionId = _generateId();
     } else {
+      _handleToggleOff();
+      _intentNeedHandle = false;
       _currentSessionId = null;
     }
     _nluQuery(text, sessionId: _currentSessionId);
@@ -465,9 +479,13 @@ class RhasspyMqttApi {
               recMessPayload.payload.message)));
       if (intentParsed.siteId == siteId) {
         onReceivedIntent(intentParsed);
-
+        if (!_intentNeedHandle) {
+          _handleToggleOn();
+          _intentNeedHandle = true;
+          stopRecording();
+        }
         // if the intent is to be managed
-        if (intentParsed.sessionId != null) {
+        if (intentParsed.sessionId != null && _intentNeedHandle) {
           Future.delayed(Duration(seconds: timeOutIntent), () {
             if (_intentHandled) {
               /// intent handled correctly
@@ -481,6 +499,16 @@ class RhasspyMqttApi {
             }
           });
         }
+      }
+    }
+    if (lastMessage.topic == "hermes/nlu/intentNotRecognized") {
+      final MqttPublishMessage recMessPayload = lastMessage.payload;
+      NluIntentNotRecognized intentNotRecognized =
+          NluIntentNotRecognized.fromJson(json.decode(
+              MqttPublishPayload.bytesToStringAsString(
+                  recMessPayload.payload.message)));
+      if (intentNotRecognized.siteId == siteId) {
+        onIntentNotRecognized(intentNotRecognized);
       }
     }
   }
@@ -515,6 +543,7 @@ class RhasspyMqttApi {
         "hermes/dialogueManager/sessionStarted", MqttQos.atLeastOnce);
     client.subscribe(
         "hermes/dialogueManager/sessionEnded", MqttQos.atLeastOnce);
+    client.subscribe("hermes/nlu/intentNotRecognized", MqttQos.atLeastOnce);
     onConnected();
   }
 
