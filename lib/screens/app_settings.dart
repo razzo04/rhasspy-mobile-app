@@ -7,6 +7,9 @@ import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:rhasspy_mobile_app/rhasspy_dart/rhasspy_api.dart';
 import 'package:rhasspy_mobile_app/rhasspy_dart/rhasspy_mqtt_isolate.dart';
+import 'package:rhasspy_mobile_app/wake_word/udp_wake_word.dart';
+import 'package:rhasspy_mobile_app/wake_word/wake_word_base.dart';
+import 'package:rhasspy_mobile_app/wake_word/wake_word_utils.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:provider/provider.dart';
 
@@ -23,7 +26,10 @@ class _AppSettingsState extends State<AppSettings> {
   TextEditingController rhasspyIpController;
   RhasspyMqttIsolate rhasspyMqtt;
   final _formKey = GlobalKey<FormState>();
+  final _formWakeWordKey = GlobalKey<FormState>();
   bool _passwordVisible = false;
+  bool _isListening = false;
+  List<DropdownMenuItem<String>> availableWakeWordDetector = [];
 
   @override
   Widget build(BuildContext context) {
@@ -156,6 +162,7 @@ class _AppSettingsState extends State<AppSettings> {
                     Divider(
                       thickness: 2,
                     ),
+                    _buildWakeWordWidget(prefs),
                     FlatButton.icon(
                       onPressed: () {
                         showLicensePage(
@@ -173,6 +180,124 @@ class _AppSettingsState extends State<AppSettings> {
             }
           }),
     );
+  }
+
+  Widget _buildWakeWordWidget(SharedPreferences prefs) {
+    if (prefs.getBool("WAKEWORD") != null && prefs.getBool("WAKEWORD")) {
+      Widget wakeWorkWidget;
+      switch (prefs.getString("WAKEWORDSELECT")) {
+        case "UDP":
+          wakeWorkWidget = Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(left: 16),
+                child: TextFormField(
+                  initialValue: prefs.getString("UDPHOST"),
+                  onSaved: (value) {
+                    prefs.setString("UDPHOST", value);
+                  },
+                  onFieldSubmitted: (value) {
+                    prefs.setString("UDPHOST", value);
+                  },
+                  decoration: InputDecoration(
+                      hintText: "192.168.1.15:20000", labelText: "Host"),
+                  validator: (value) {
+                    if (value.isEmpty) {
+                      return "the field cannot be empty";
+                    }
+                    if (value.split(":").length == 1) {
+                      return "specify the port";
+                    }
+                  },
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.all(8.0),
+                child: FlatButton(
+                    onPressed: () async {
+                      if (_formWakeWordKey.currentState.validate()) {
+                        _formWakeWordKey.currentState.save();
+                        String ip = prefs.getString("UDPHOST").split(":").first;
+                        int port = int.parse(
+                            prefs.getString("UDPHOST").split(":").last);
+                        UdpWakeWord wakeWord = UdpWakeWord(ip, port);
+                        if (rhasspyMqtt == null) {
+                          rhasspyMqtt = context.read<RhasspyMqttIsolate>();
+                        }
+                        if (rhasspyMqtt.isConnected) {
+                          rhasspyMqtt.enableWakeWord(wakeWord);
+                        }
+                        if (!(await wakeWord.isRunning)) {
+                          wakeWord.startListening();
+                          setState(() {
+                            _isListening = true;
+                          });
+                        } else {
+                          wakeWord.stopListening();
+                          setState(() {
+                            _isListening = false;
+                          });
+                        }
+                      }
+                    },
+                    child: _isListening
+                        ? Text("Stop wake word")
+                        : Text("Start wake word")),
+              )
+            ],
+          );
+          break;
+        default:
+          wakeWorkWidget = Container();
+      }
+
+      return Form(
+        key: _formWakeWordKey,
+        child: Column(
+          children: <Widget>[
+            SwitchListTile.adaptive(
+              value: prefs.getBool("WAKEWORD") ?? false,
+              onChanged: (bool value) {
+                setState(() {
+                  prefs.setBool("WAKEWORD", value);
+                });
+              },
+              title: Text("Wake word"),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: DropdownButtonFormField(
+                items: availableWakeWordDetector,
+                onChanged: (value) {
+                  setState(() {
+                    prefs.setString("WAKEWORDSELECT", value);
+                  });
+                },
+                value: prefs.getString("WAKEWORDSELECT"),
+              ),
+            ),
+            wakeWorkWidget,
+          ],
+        ),
+      );
+    } else {
+      return Form(
+        key: _formWakeWordKey,
+        child: Column(
+          children: <Widget>[
+            SwitchListTile.adaptive(
+              value: prefs.getBool("WAKEWORD") ?? false,
+              onChanged: (bool value) {
+                setState(() {
+                  prefs.setBool("WAKEWORD", value);
+                });
+              },
+              title: Text("Wake word"),
+            ),
+          ],
+        ),
+      );
+    }
   }
 
   Widget _buildMqttWidget(SharedPreferences prefs) {
@@ -446,6 +571,21 @@ class _AppSettingsState extends State<AppSettings> {
 
   @override
   void initState() {
+    WakeWordUtils().isRunning.then((value) {
+      setState(() {
+        _isListening = value;
+      });
+    });
+    WakeWordUtils().availableWakeWordDetector.then((value) {
+      setState(() {
+        for (String wakeWordDetector in value) {
+          availableWakeWordDetector.add(DropdownMenuItem(
+            child: Text(wakeWordDetector),
+            value: wakeWordDetector,
+          ));
+        }
+      });
+    });
     super.initState();
   }
 

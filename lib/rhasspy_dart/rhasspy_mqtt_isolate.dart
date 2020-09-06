@@ -3,6 +3,8 @@ import 'dart:typed_data';
 import 'dart:async';
 import 'dart:isolate';
 
+import 'package:rhasspy_mobile_app/wake_word/wake_word_base.dart';
+
 import 'parse_messages.dart';
 import 'rhasspy_mqtt_api.dart';
 
@@ -17,10 +19,12 @@ class RhasspyMqttIsolate {
   bool _isConnected = false;
   bool get isConnected => _isConnected;
   int lastConnectionCode;
+  WakeWordBase _wakeWordBase;
 
   bool isSessionStarted = false;
   String pemFilePath;
   SendPort _sendPort;
+  ReceivePort _receivePort;
 
   /// the port to send message to isolate
   SendPort get sendPort => _sendPort;
@@ -34,6 +38,7 @@ class RhasspyMqttIsolate {
   Future<bool> Function(List<int>) onReceivedAudio;
   void Function(DialogueEndSession) onReceivedEndSession;
   void Function(DialogueContinueSession) onReceivedContinueSession;
+  void Function(HotwordDetected) onHotwordDetected;
   void Function(NluIntentParsed) onTimeoutIntentHandle;
   void Function() stopRecording;
   Future<bool> Function() startRecording;
@@ -62,6 +67,7 @@ class RhasspyMqttIsolate {
       this.onReceivedContinueSession,
       this.onTimeoutIntentHandle,
       this.onIntentNotRecognized,
+      this.onHotwordDetected,
       this.onConnected,
       this.onDisconnected,
       this.onStartSession,
@@ -87,6 +93,7 @@ class RhasspyMqttIsolate {
     void Function(DialogueContinueSession) onReceivedContinueSession,
     void Function(NluIntentParsed) onTimeoutIntentHandle,
     void Function(NluIntentNotRecognized) onIntentNotRecognized,
+    void Function(HotwordDetected) onHotwordDetected,
     void Function() onConnected,
     void Function() onDisconnected,
     void Function(DialogueStartSession) onStartSession,
@@ -101,6 +108,7 @@ class RhasspyMqttIsolate {
     this.onReceivedContinueSession = onReceivedContinueSession;
     this.onTimeoutIntentHandle = onTimeoutIntentHandle;
     this.onIntentNotRecognized = onIntentNotRecognized;
+    this.onHotwordDetected = onHotwordDetected;
     this.onStartSession = onStartSession;
     this.onConnected = onConnected;
     this.onDisconnected = onDisconnected;
@@ -121,11 +129,11 @@ class RhasspyMqttIsolate {
   }
 
   Future<void> _init() async {
-    final receivePort = ReceivePort();
+    _receivePort = ReceivePort();
     final errorPort = ReceivePort();
     errorPort.listen(print);
-    receivePort.listen(_handleMessage);
-    _isolate = await Isolate.spawn(_isolateEntry, receivePort.sendPort,
+    _receivePort.listen(_handleMessage);
+    _isolate = await Isolate.spawn(_isolateEntry, _receivePort.sendPort,
         onError: errorPort.sendPort, debugName: "Mqtt", errorsAreFatal: false);
   }
 
@@ -158,7 +166,7 @@ class RhasspyMqttIsolate {
     _sendPort.send(rhasspyMqttArguments);
   }
 
-  void _handleMessage(dynamic message) {
+  void _handleMessage(dynamic message) async {
     if (message is SendPort) {
       _sendPort = message;
       _isolateReady.complete();
@@ -225,6 +233,29 @@ class RhasspyMqttIsolate {
       if (message.containsKey("onIntentNotRecognized")) {
         onIntentNotRecognized(message["onIntentNotRecognized"]);
       }
+      if (message.containsKey("onHotwordDetected")) {
+        onHotwordDetected(message["onHotwordDetected"]);
+      }
+      if (message.containsKey("WakeWord")) {
+        switch (message["WakeWord"]) {
+          case "availableWakeWordDetector":
+            sendPort.send({
+              "availableWakeWordDetector":
+                  await _wakeWordBase.availableWakeWordDetector
+            });
+            break;
+          case "isRunning":
+            sendPort.send({"isRunning": await _wakeWordBase.isRunning});
+            break;
+          case "pause":
+            sendPort.send({"pause": await _wakeWordBase.pause()});
+            break;
+          case "resume":
+            sendPort.send({"resume": await _wakeWordBase.resume()});
+            break;
+          default:
+        }
+      }
     }
   }
 
@@ -235,6 +266,7 @@ class RhasspyMqttIsolate {
     Completer<bool> _receivedAudio = Completer<bool>();
     Completer<bool> _startRecordingCompleter = Completer<bool>();
     StreamController<Uint8List> audioStream = StreamController();
+    WakeWordBaseIsolate _wakeWordIsolate;
 
     receivePort.listen(
       (dynamic message) async {
@@ -267,6 +299,8 @@ class RhasspyMqttIsolate {
             sendPort.send("onConnected");
           }, onDisconnected: () {
             sendPort.send("onDisconnected");
+          }, onHotwordDetected: (hotwordDetected) {
+            sendPort.send({"onHotwordDetected": hotwordDetected});
           }, onStartSession: (startSession) {
             sendPort.send({"onStartSession": startSession});
             //TODO get isSessionStarted directly
@@ -292,6 +326,11 @@ class RhasspyMqttIsolate {
             case "cleanSession":
               rhasspyMqtt.cleanSession();
               break;
+            case "enableWakeWord":
+              _wakeWordIsolate = WakeWordBaseIsolate(sendPort: sendPort);
+              rhasspyMqtt.enableWakeWord(_wakeWordIsolate);
+              break;
+
             default:
               throw UnimplementedError(
                   "Undefined behavior for message: $message");
@@ -316,9 +355,21 @@ class RhasspyMqttIsolate {
                 generateSessionId: message["textToSpeech"]
                     ["generateSessionId"]);
           }
+          if (message.containsKey("enableWakeWord")) {
+            rhasspyMqtt.enableWakeWord(message["enableWakeWord"]);
+          }
           if (message.containsKey("startRecording")) {
             _startRecordingCompleter.complete(message["startRecording"]);
             _startRecordingCompleter = Completer();
+          }
+          if (message.containsKey("isRunning")) {
+            _wakeWordIsolate.isRunningCompleter.complete(message["isRunning"]);
+            _wakeWordIsolate.isRunningCompleter = Completer();
+          }
+          if (message.containsKey("availableWakeWordDetector")) {
+            _wakeWordIsolate.availableWakeWordDetectorCompleter
+                .complete(message["availableWakeWordDetector"]);
+            _wakeWordIsolate.availableWakeWordDetectorCompleter = Completer();
           }
         }
         if (message is Uint8List) {
@@ -339,6 +390,11 @@ class RhasspyMqttIsolate {
     _sendPort.send({
       "speechTotext": {"dataAudio": dataAudio, "cleanSession": cleanSession}
     });
+  }
+
+  void enableWakeWord(WakeWordBase wakeWord) {
+    _wakeWordBase = wakeWord;
+    _sendPort.send("enableWakeWord");
   }
 
   @override
@@ -387,4 +443,60 @@ class RhasspyMqttArguments {
     this.timeOutIntent = 4,
     this.enableStream = false,
   });
+}
+
+class WakeWordBaseIsolate implements WakeWordBase {
+  SendPort sendPort;
+  WakeWordBaseIsolate({this.sendPort});
+  Completer<bool> isRunningCompleter = Completer();
+  Completer<bool> resumeCompleter = Completer();
+  Completer<bool> pauseCompleter = Completer();
+  Completer<bool> isListeningCompleter = Completer();
+  Completer<List<String>> availableWakeWordDetectorCompleter = Completer();
+
+  @override
+  String name;
+
+  @override
+  Future<List<String>> get availableWakeWordDetector {
+    sendPort.send({"WakeWord": "availableWakeWordDetector"});
+    return availableWakeWordDetectorCompleter.future;
+  }
+
+  @override
+  Future<bool> get isAvailable => throw UnimplementedError();
+
+  @override
+  Future<bool> get isRunning {
+    sendPort.send({"WakeWord": "isRunning"});
+    return isRunningCompleter.future;
+  }
+
+  @override
+  Future<bool> pause() {
+    sendPort.send({"WakeWord": "pause"});
+    return pauseCompleter.future;
+  }
+
+  @override
+  Future<bool> resume() {
+    sendPort.send({"WakeWord": "resume"});
+    return resumeCompleter.future;
+  }
+
+  @override
+  Future<bool> startListening() {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<bool> stopListening() {
+    sendPort.send({"WakeWord": "stopListening"});
+  }
+
+  @override
+  Future<bool> get isListening {
+    sendPort.send({"WakeWord": "stopListening"});
+    return isListeningCompleter.future;
+  }
 }

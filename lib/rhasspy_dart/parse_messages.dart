@@ -421,3 +421,67 @@ class NluIntentNotRecognized {
     return data;
   }
 }
+
+class HotwordDetected {
+  String modelId;
+  String modelVersion;
+  String modelType;
+  double currentSensitivity;
+  String siteId;
+  String sessionId;
+  bool sendAudioCaptured;
+  String lang;
+
+  HotwordDetected(
+      {this.modelId,
+      this.modelVersion,
+      this.modelType,
+      this.currentSensitivity,
+      this.siteId,
+      this.sessionId,
+      this.sendAudioCaptured,
+      this.lang});
+
+  HotwordDetected.fromJson(Map<String, dynamic> json) {
+    modelId = json['modelId'];
+    modelVersion = json['modelVersion'];
+    modelType = json['modelType'];
+    currentSensitivity = json['currentSensitivity'];
+    siteId = json['siteId'];
+    sessionId = json['sessionId'];
+    sendAudioCaptured = json['sendAudioCaptured'];
+    lang = json['lang'];
+  }
+
+  Map<String, dynamic> toJson() {
+    final Map<String, dynamic> data = new Map<String, dynamic>();
+    data['modelId'] = this.modelId;
+    data['modelVersion'] = this.modelVersion;
+    data['modelType'] = this.modelType;
+    data['currentSensitivity'] = this.currentSensitivity;
+    data['siteId'] = this.siteId;
+    data['sessionId'] = this.sessionId;
+    data['sendAudioCaptured'] = this.sendAudioCaptured;
+    data['lang'] = this.lang;
+    return data;
+  }
+}
+
+class HotwordToggle {
+  String siteId;
+  String reason;
+
+  HotwordToggle({this.siteId, this.reason});
+
+  HotwordToggle.fromJson(Map<String, dynamic> json) {
+    siteId = json['siteId'];
+    reason = json['reason'];
+  }
+
+  Map<String, dynamic> toJson() {
+    final Map<String, dynamic> data = new Map<String, dynamic>();
+    data['siteId'] = this.siteId;
+    data['reason'] = this.reason;
+    return data;
+  }
+}

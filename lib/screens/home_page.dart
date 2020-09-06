@@ -17,6 +17,7 @@ import 'package:rhasspy_mobile_app/rhasspy_dart/rhasspy_api.dart';
 import 'package:rhasspy_mobile_app/rhasspy_dart/rhasspy_mqtt_isolate.dart';
 import 'package:rhasspy_mobile_app/screens/app_settings.dart';
 import 'package:rhasspy_mobile_app/utils/audio_recorder_isolate.dart';
+import 'package:rhasspy_mobile_app/wake_word/wake_word_utils.dart';
 import 'package:rhasspy_mobile_app/widget/Intent_viewer.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -47,6 +48,7 @@ class _HomePageState extends State<HomePage> {
   AudioRecorderIsolate audioRecorderIsolate;
   NluIntentParsed intent;
   FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin;
+  bool _hotwordDetected = false;
 
   @override
   Widget build(BuildContext context) {
@@ -288,6 +290,7 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _stopRecording() async {
+    if (await WakeWordUtils().isRunning) WakeWordUtils().resume();
     if (((await _prefs).getBool("MQTT") ?? false) &&
         ((await _prefs).getBool("SILENCE") ?? false)) {
       audioRecorderIsolate.stopRecording();
@@ -336,6 +339,7 @@ class _HomePageState extends State<HomePage> {
   }
 
   void _startRecording() async {
+    if (await WakeWordUtils().isRunning) WakeWordUtils().pause();
     if (await Permission.microphone.request().isGranted) {
       if (recorder != null) statusRecording = (await recorder.current()).status;
       if (statusRecording == RecordingStatus.Recording) {
@@ -518,6 +522,7 @@ class _HomePageState extends State<HomePage> {
           if (rhasspyMqtt != null) {
             _subscribeMqtt(prefs);
             mqttReady.complete();
+            mqttReady = Completer();
             timer.cancel();
           }
         });
@@ -597,7 +602,7 @@ class _HomePageState extends State<HomePage> {
       },
       startRecording: () async {
         /// wait for the audio to be played after starting to listen
-        await audioPlayer.onPlayerCompletion.first;
+        if (!_hotwordDetected) await audioPlayer.onPlayerCompletion.first;
         _startRecording();
         return true;
       },
@@ -610,6 +615,9 @@ class _HomePageState extends State<HomePage> {
             ((await _prefs).getBool("NOTIFICATION") ?? false)) {
           _showNotification("Notification", startSession.init.text);
         }
+      },
+      onHotwordDetected: (HotwordDetected hotwordDetected) {
+        _hotwordDetected = true;
       },
     );
   }

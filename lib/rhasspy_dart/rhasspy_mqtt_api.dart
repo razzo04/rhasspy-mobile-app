@@ -6,6 +6,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:mqtt_client/mqtt_client.dart';
 import 'package:mqtt_client/mqtt_server_client.dart';
+import 'package:rhasspy_mobile_app/wake_word/wake_word_base.dart';
 
 import 'parse_messages.dart';
 
@@ -32,6 +33,7 @@ class RhasspyMqttApi {
   bool _streamActive = false;
   bool _badCertificate = false;
   bool _intentNeedHandle = true;
+  WakeWordBase _wakeWord;
 
   /// becomes true when there is an active session.
   bool isSessionStarted = false;
@@ -58,6 +60,7 @@ class RhasspyMqttApi {
   void Function(DialogueContinueSession) onReceivedContinueSession;
   void Function(NluIntentParsed) onTimeoutIntentHandle;
   void Function(NluIntentNotRecognized) onIntentNotRecognized;
+  void Function(HotwordDetected) onHotwordDetected;
   void Function() stopRecording;
 
   /// call when there is a need to record audio.
@@ -68,23 +71,30 @@ class RhasspyMqttApi {
   void Function() onDisconnected;
 
   RhasspyMqttApi(
-      this.host, this.port, this.ssl, this.username, this.password, this.siteId,
-      {this.timeOutIntent = 4,
-      this.onReceivedIntent,
-      this.onReceivedText,
-      this.onReceivedAudio,
-      this.onReceivedEndSession,
-      this.onReceivedContinueSession,
-      this.onTimeoutIntentHandle,
-      this.onIntentNotRecognized,
-      this.onConnected,
-      this.onDisconnected,
-      this.onStartSession,
-      this.startRecording,
-      this.audioStream,
-      this.stopRecording,
-      this.pemFilePath,
-      this.client}) {
+    this.host,
+    this.port,
+    this.ssl,
+    this.username,
+    this.password,
+    this.siteId, {
+    this.timeOutIntent = 4,
+    this.onReceivedIntent,
+    this.onReceivedText,
+    this.onReceivedAudio,
+    this.onReceivedEndSession,
+    this.onReceivedContinueSession,
+    this.onTimeoutIntentHandle,
+    this.onIntentNotRecognized,
+    this.onHotwordDetected,
+    this.onConnected,
+    this.onDisconnected,
+    this.onStartSession,
+    this.startRecording,
+    this.audioStream,
+    this.stopRecording,
+    this.pemFilePath,
+    this.client,
+  }) {
     if (client == null)
       client = MqttServerClient.withPort(host, siteId, port,
           maxConnectionAttempts: 1);
@@ -375,7 +385,7 @@ class RhasspyMqttApi {
     var lastMessage = messages[0];
     print("topic: ${lastMessage.topic}");
     if (lastMessage.topic.contains("hermes/audioServer/$siteId/playBytes/")) {
-      print("recivied audio");
+      print("received audio");
       final MqttPublishMessage recMessPayload = lastMessage.payload;
       var buffer = recMessPayload.payload.message;
       onReceivedAudio(buffer.toList()).then((value) {
@@ -457,8 +467,15 @@ class RhasspyMqttApi {
           json.decode(MqttPublishPayload.bytesToStringAsString(
               recMessPayload.payload.message)));
       if (startedSession.siteId == siteId) {
-        if (_lastStartSession.init.type == "action") {
+        if (_lastStartSession != null) {
+          if (_lastStartSession.init.type == "action") {
+            _currentSessionId = startedSession.sessionId;
+          }
+        } else {
+          // Wake Word detected
           _currentSessionId = startedSession.sessionId;
+          isSessionStarted = true;
+          startRecording();
         }
       }
     }
@@ -511,6 +528,47 @@ class RhasspyMqttApi {
         onIntentNotRecognized(intentNotRecognized);
       }
     }
+    if (lastMessage.topic
+        .contains(RegExp(r"^hermes/hotword/([^/]+)/detected$"))) {
+      final MqttPublishMessage recMessPayload = lastMessage.payload;
+      HotwordDetected hotwordDetected = HotwordDetected.fromJson(json.decode(
+          MqttPublishPayload.bytesToStringAsString(
+              recMessPayload.payload.message)));
+      if (hotwordDetected.siteId == siteId) {
+        _lastStartSession = null;
+        onHotwordDetected(hotwordDetected);
+      }
+    }
+    if (lastMessage.topic == "hermes/hotword/toggleOn") {
+      final MqttPublishMessage recMessPayload = lastMessage.payload;
+      HotwordToggle hotwordToggleOn = HotwordToggle.fromJson(json.decode(
+          MqttPublishPayload.bytesToStringAsString(
+              recMessPayload.payload.message)));
+      if (hotwordToggleOn.siteId == siteId) {
+        if (_wakeWord != null) {
+          _wakeWord.isRunning.then((value) {
+            if (value) _wakeWord.resume();
+          });
+        }
+      }
+    }
+    if (lastMessage.topic == "hermes/hotword/toggleOff") {
+      final MqttPublishMessage recMessPayload = lastMessage.payload;
+      HotwordToggle hotwordToggleOff = HotwordToggle.fromJson(json.decode(
+          MqttPublishPayload.bytesToStringAsString(
+              recMessPayload.payload.message)));
+      if (hotwordToggleOff.siteId == siteId) {
+        if (_wakeWord != null) {
+          _wakeWord.isRunning.then((value) {
+            if (value) _wakeWord.pause();
+          });
+        }
+      }
+    }
+  }
+
+  void enableWakeWord(WakeWordBase wakeWord) {
+    _wakeWord = wakeWord;
   }
 
   /// disconnect form the broker and
@@ -544,6 +602,7 @@ class RhasspyMqttApi {
     client.subscribe(
         "hermes/dialogueManager/sessionEnded", MqttQos.atLeastOnce);
     client.subscribe("hermes/nlu/intentNotRecognized", MqttQos.atLeastOnce);
+    client.subscribe("hermes/hotword/#", MqttQos.atLeastOnce);
     onConnected();
   }
 
