@@ -85,7 +85,7 @@ public class WakeWordService extends Service {
         PendingIntent pendingIntent = PendingIntent.getActivity(this,
                 0, notificationIntent, 0);
 
-        Notification notification = new NotificationCompat.Builder(this, "UDP Wake word")
+        Notification notification = new NotificationCompat.Builder(this, "Wake word")
                 .setContentTitle("Wake Work")
                 .setContentText("Listening for Wake Work")
                 .setSmallIcon(R.drawable.app_icon)

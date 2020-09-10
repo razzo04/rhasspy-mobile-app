@@ -15,6 +15,7 @@ class RhasspyMqttIsolate {
   String username;
   String password;
   String siteId;
+  bool autoRestart = true;
   Stream<Uint8List> audioStream;
   bool _isConnected = false;
   bool get isConnected => _isConnected;
@@ -76,11 +77,16 @@ class RhasspyMqttIsolate {
       this.stopRecording,
       this.pemFilePath}) {
     _init();
+  }
+
+  void _init() {
+    _initIsolate();
     _initializeMqtt();
     audioStream?.listen((event) {
       _sendPort.send(event);
     });
   }
+
   void dispose() {
     _isolate.kill();
   }
@@ -128,13 +134,14 @@ class RhasspyMqttIsolate {
     return _connectCompleter.future;
   }
 
-  Future<void> _init() async {
+  Future<void> _initIsolate() async {
     _receivePort = ReceivePort();
     final errorPort = ReceivePort();
     errorPort.listen(print);
     _receivePort.listen(_handleMessage);
     _isolate = await Isolate.spawn(_isolateEntry, _receivePort.sendPort,
         onError: errorPort.sendPort, debugName: "Mqtt", errorsAreFatal: false);
+    _isolate.addOnExitListener(_receivePort.sendPort, response: "exit");
   }
 
   Future<void> _initializeMqtt() async {
@@ -193,6 +200,11 @@ class RhasspyMqttIsolate {
         case "onDisconnected":
           _isConnected = false;
           if (onDisconnected != null) onDisconnected();
+          break;
+        case "exit":
+          if (autoRestart) {
+            _init();
+          }
           break;
         default:
       }

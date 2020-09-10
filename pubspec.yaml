@@ -23,7 +23,7 @@ environment:
 dependencies:
   flutter:
     sdk: flutter 
-  shared_preferences: ^0.5.8
+  shared_preferences: ^0.5.10
   permission_handler: ^5.0.1+1    
   flutter_audio_recorder: ^0.5.5
   path_provider:

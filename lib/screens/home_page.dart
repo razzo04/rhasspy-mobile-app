@@ -101,21 +101,19 @@ class _HomePageState extends State<HomePage> {
                         return;
                       }
                     }
-                    if (!await _checkRhasspyIsReady() &&
-                        (!(await _prefs).getBool("MQTT"))) {
+                    if (!((await _prefs).getBool("MQTT") ?? false) &&
+                        !(await _checkRhasspyIsReady())) {
                       // if we have not set mqtt and we cannot
                       // make a connection to rhasspy don't start recording
                       return;
                     }
-                    if (await Permission.microphone.request().isGranted) {
-                      if (recorder != null)
-                        statusRecording = (await recorder.current()).status;
-                      if (statusRecording == RecordingStatus.Unset ||
-                          statusRecording == RecordingStatus.Stopped) {
-                        _startRecording();
-                      } else {
-                        _stopRecording();
-                      }
+                    if (recorder != null)
+                      statusRecording = (await recorder.current()).status;
+                    if (statusRecording == RecordingStatus.Unset ||
+                        statusRecording == RecordingStatus.Stopped) {
+                      _startRecording();
+                    } else {
+                      _stopRecording();
                     }
                   },
                   iconSize: MediaQuery.of(context).size.width / 1.7,
@@ -186,14 +184,14 @@ class _HomePageState extends State<HomePage> {
                 children: <Widget>[
                   FlatButton(
                       onPressed: () async {
-                        if (!await _checkRhasspyIsReady()) {
-                          return;
-                        }
                         if (await Permission.storage.request().isGranted) {
                           var file =
                               await FilePicker.getFile(type: FileType.audio);
                           if (file != null) {
                             if (!((await _prefs).getBool("MQTT") ?? false)) {
+                              if (!await _checkRhasspyIsReady()) {
+                                return;
+                              }
                               rhasspy.speechToText(file).then((value) {
                                 setState(
                                   () {
@@ -262,23 +260,35 @@ class _HomePageState extends State<HomePage> {
   Future<bool> _checkMqtt(BuildContext context) async {
     if ((await _prefs).containsKey("MQTT") && (await _prefs).getBool("MQTT")) {
       if (rhasspyMqtt == null) {
-        FlushbarHelper.createError(message: "not ready yet").show(context);
-        return false;
+        rhasspyMqtt = context.read<RhasspyMqttIsolate>();
+        if (rhasspyMqtt == null) {
+          print("get reference");
+          await FlushbarHelper.createError(message: "not ready yet")
+              .show(context);
+          return false;
+        } else {
+          if (!rhasspyMqtt.isConnected) {
+            return await rhasspyMqtt.connect() == 0 ? true : false;
+          } else {
+            return true;
+          }
+        }
       } else {
         if (rhasspyMqtt.isConnected) {
           return true;
         } else {
           int result = rhasspyMqtt.lastConnectionCode;
+          print("mqtt not connected ${rhasspyMqtt.lastConnectionCode}");
           if (result == 1) {
-            FlushbarHelper.createError(message: "failed to connect")
+            await FlushbarHelper.createError(message: "failed to connect")
                 .show(context);
           }
           if (result == 2) {
-            FlushbarHelper.createError(message: "incorrect credentials")
+            await FlushbarHelper.createError(message: "incorrect credentials")
                 .show(context);
           }
           if (result == 3) {
-            FlushbarHelper.createError(message: "bad certificate")
+            await FlushbarHelper.createError(message: "bad certificate")
                 .show(context);
           }
           return false;

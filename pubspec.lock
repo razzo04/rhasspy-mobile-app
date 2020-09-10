@@ -295,7 +295,7 @@ packages:
       name: shared_preferences
       url: "https://pub.dartlang.org"
     source: hosted
-    version: "0.5.8"
+    version: "0.5.10"
   shared_preferences_linux:
     dependency: transitive
     description:

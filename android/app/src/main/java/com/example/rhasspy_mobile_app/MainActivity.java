@@ -40,7 +40,6 @@ public class MainActivity extends FlutterActivity {
                 && getIntent().getAction().equals(Intent.ACTION_MAIN)) {
 
             finish();
-            return;
         }
 
 
@@ -185,5 +184,12 @@ public class MainActivity extends FlutterActivity {
             mBound = false;
         }
     };
+
+    @Override
+    protected void onDestroy() {
+        unbindService(connection);
+        super.onDestroy();
+
+    }
 }
 

@@ -176,7 +176,7 @@ class _AppSettingsState extends State<AppSettings> {
                 ),
               );
             } else {
-              return CircularProgressIndicator();
+              return Center(child: CircularProgressIndicator());
             }
           }),
     );
@@ -460,9 +460,11 @@ class _AppSettingsState extends State<AppSettings> {
             SwitchListTile.adaptive(
               value: prefs.getBool("NOTIFICATION") ?? false,
               onChanged: (bool value) {
-                setState(() {});
+                setState(() {
+                  prefs.setBool("NOTIFICATION", value);
+                });
               },
-              title: Text("enable notification"),
+              title: Text("Enable notification"),
               subtitle: Text(
                   "when a notification start session arrives a notification will be sent"),
             ),
