@@ -8,7 +8,6 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:rhasspy_mobile_app/rhasspy_dart/rhasspy_api.dart';
 import 'package:rhasspy_mobile_app/rhasspy_dart/rhasspy_mqtt_isolate.dart';
 import 'package:rhasspy_mobile_app/wake_word/udp_wake_word.dart';
-import 'package:rhasspy_mobile_app/wake_word/wake_word_base.dart';
 import 'package:rhasspy_mobile_app/wake_word/wake_word_utils.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:provider/provider.dart';
@@ -224,7 +223,7 @@ class _AppSettingsState extends State<AppSettings> {
                         if (rhasspyMqtt == null) {
                           rhasspyMqtt = context.read<RhasspyMqttIsolate>();
                         }
-                        if (rhasspyMqtt.isConnected) {
+                        if (await rhasspyMqtt.isConnected) {
                           rhasspyMqtt.enableWakeWord(wakeWord);
                         }
                         if (!(await wakeWord.isRunning)) {

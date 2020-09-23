@@ -17,8 +17,12 @@ class RhasspyMqttIsolate {
   String siteId;
   bool autoRestart = true;
   Stream<Uint8List> audioStream;
-  bool _isConnected = false;
-  bool get isConnected => _isConnected;
+  Completer<bool> _isConnectedCompleter = Completer<bool>();
+  Future<bool> get isConnected {
+    _sendPort.send("isConnected");
+    return _isConnectedCompleter.future;
+  }
+
   int lastConnectionCode;
   WakeWordBase _wakeWordBase;
 
@@ -137,7 +141,14 @@ class RhasspyMqttIsolate {
   Future<void> _initIsolate() async {
     _receivePort = ReceivePort();
     final errorPort = ReceivePort();
-    errorPort.listen(print);
+    errorPort.listen((error) {
+      print(error);
+      if (error is List) {
+        if (error[0].contains("SocketException:")) {
+          connect();
+        }
+      }
+    });
     _receivePort.listen(_handleMessage);
     _isolate = await Isolate.spawn(_isolateEntry, _receivePort.sendPort,
         onError: errorPort.sendPort, debugName: "Mqtt", errorsAreFatal: false);
@@ -192,13 +203,11 @@ class RhasspyMqttIsolate {
           });
           break;
         case "onConnected":
-          _isConnected = true;
           _connectCompleter.complete(0);
           _connectCompleter = Completer<int>();
           if (onConnected != null) onConnected();
           break;
         case "onDisconnected":
-          _isConnected = false;
           if (onDisconnected != null) onDisconnected();
           break;
         case "exit":
@@ -210,63 +219,72 @@ class RhasspyMqttIsolate {
       }
     }
     if (message is Map<String, Object>) {
-      // print("message is a map ${message.toString()}");
-      if (message.containsKey("connectCode")) {
-        print("connected code: ${message["connectCode"]}");
-        _connectCompleter.complete(message["connectCode"]);
-        _connectCompleter = Completer<int>();
-        lastConnectionCode = message["connectCode"];
-      }
-      if (message.containsKey("onReceivedAudio")) {
-        onReceivedAudio(message["onReceivedAudio"])
-            .then((value) => _sendPort.send({"onReceivedAudio": value}));
-      }
-      if (message.containsKey("onReceivedText")) {
-        onReceivedText(message["onReceivedText"]);
-      }
-      if (message.containsKey("onReceivedIntent")) {
-        onReceivedIntent(message["onReceivedIntent"]);
-      }
-      if (message.containsKey("onReceivedEndSession")) {
-        onReceivedEndSession(message["onReceivedEndSession"]);
-      }
-      if (message.containsKey("onReceivedContinueSession")) {
-        onReceivedContinueSession(message["onReceivedContinueSession"]);
-      }
-      if (message.containsKey("onTimeoutIntentHandle")) {
-        onTimeoutIntentHandle(message["onTimeoutIntentHandle"]);
-      }
-      if (message.containsKey("onStartSession")) {
-        if (onStartSession != null) onStartSession(message["onStartSession"]);
-      }
-      if (message.containsKey("isSessionStarted")) {
-        isSessionStarted = message["isSessionStarted"];
-      }
-      if (message.containsKey("onIntentNotRecognized")) {
-        onIntentNotRecognized(message["onIntentNotRecognized"]);
-      }
-      if (message.containsKey("onHotwordDetected")) {
-        onHotwordDetected(message["onHotwordDetected"]);
-      }
-      if (message.containsKey("WakeWord")) {
-        switch (message["WakeWord"]) {
-          case "availableWakeWordDetector":
-            sendPort.send({
-              "availableWakeWordDetector":
-                  await _wakeWordBase.availableWakeWordDetector
-            });
-            break;
-          case "isRunning":
-            sendPort.send({"isRunning": await _wakeWordBase.isRunning});
-            break;
-          case "pause":
-            sendPort.send({"pause": await _wakeWordBase.pause()});
-            break;
-          case "resume":
-            sendPort.send({"resume": await _wakeWordBase.resume()});
-            break;
-          default:
-        }
+      switch (message.keys.first) {
+        case "connectCode":
+          print("connected code: ${message["connectCode"]}");
+          _connectCompleter.complete(message["connectCode"]);
+          _connectCompleter = Completer<int>();
+          lastConnectionCode = message["connectCode"];
+          break;
+        case "onReceivedAudio":
+          onReceivedAudio(message["onReceivedAudio"])
+              .then((value) => _sendPort.send({"onReceivedAudio": value}));
+          break;
+        case "onReceivedText":
+          onReceivedText(message["onReceivedText"]);
+          break;
+        case "onReceivedIntent":
+          onReceivedIntent(message["onReceivedIntent"]);
+          break;
+        case "onReceivedEndSession":
+          onReceivedEndSession(message["onReceivedEndSession"]);
+          break;
+        case "onReceivedContinueSession":
+          onReceivedContinueSession(message["onReceivedContinueSession"]);
+          break;
+        case "onTimeoutIntentHandle":
+          onTimeoutIntentHandle(message["onTimeoutIntentHandle"]);
+          break;
+        case "onStartSession":
+          if (onStartSession != null) onStartSession(message["onStartSession"]);
+          break;
+        case "isSessionStarted":
+          isSessionStarted = message["isSessionStarted"];
+          break;
+        case "onIntentNotRecognized":
+          onIntentNotRecognized(message["onIntentNotRecognized"]);
+          break;
+        case "onHotwordDetected":
+          onHotwordDetected(message["onHotwordDetected"]);
+          break;
+        case "IsConnected":
+          _isConnectedCompleter.complete(message["IsConnected"]);
+          _isConnectedCompleter = Completer<bool>();
+          break;
+        case "WakeWord":
+          switch (message["WakeWord"]) {
+            case "availableWakeWordDetector":
+              sendPort.send({
+                "availableWakeWordDetector":
+                    await _wakeWordBase.availableWakeWordDetector
+              });
+              break;
+            case "isRunning":
+              sendPort.send({"isRunning": await _wakeWordBase.isRunning});
+              break;
+            case "pause":
+              sendPort.send({"pause": await _wakeWordBase.pause()});
+              break;
+            case "resume":
+              sendPort.send({"resume": await _wakeWordBase.resume()});
+              break;
+            default:
+              throw UnimplementedError(
+                  "Undefined behavior for message: $message");
+          }
+          break;
+        default:
+          throw UnimplementedError("Undefined behavior for message: $message");
       }
     }
   }
@@ -325,8 +343,7 @@ class RhasspyMqttIsolate {
           }, onIntentNotRecognized: (intent) {
             sendPort.send({"onIntentNotRecognized": intent});
           });
-        }
-        if (message is String) {
+        } else if (message is String) {
           switch (message) {
             case "connect":
               int result = await rhasspyMqtt.connect();
@@ -342,49 +359,54 @@ class RhasspyMqttIsolate {
               _wakeWordIsolate = WakeWordBaseIsolate(sendPort: sendPort);
               rhasspyMqtt.enableWakeWord(_wakeWordIsolate);
               break;
-
+            case "isConnected":
+              sendPort.send({"IsConnected": rhasspyMqtt.isConnected});
+              break;
             default:
               throw UnimplementedError(
                   "Undefined behavior for message: $message");
           }
-        }
-        if (message is Map<String, dynamic>) {
-          // debugPrint("isolate recevied map: ${message.toString()}");
-          if (message.containsKey("onReceivedAudio")) {
-            _receivedAudio.complete(message["onReceivedAudio"]);
-            _receivedAudio = Completer();
+        } else if (message is Map<String, dynamic>) {
+          switch (message.keys.first) {
+            case "onReceivedAudio":
+              _receivedAudio.complete(message["onReceivedAudio"]);
+              _receivedAudio = Completer();
+              break;
+            case "speechTotext":
+              rhasspyMqtt.speechTotext(message["speechTotext"]["dataAudio"],
+                  cleanSession: message["speechTotext"]["cleanSession"]);
+              break;
+            case "textToIntent":
+              rhasspyMqtt.textToIntent(message["textToIntent"]["text"],
+                  handle: message["textToIntent"]["handle"]);
+              break;
+            case "textToSpeech":
+              rhasspyMqtt.textToSpeech(message["textToSpeech"]["text"],
+                  generateSessionId: message["textToSpeech"]
+                      ["generateSessionId"]);
+              break;
+            case "enableWakeWord":
+              rhasspyMqtt.enableWakeWord(message["enableWakeWord"]);
+              break;
+            case "startRecording":
+              _startRecordingCompleter.complete(message["startRecording"]);
+              _startRecordingCompleter = Completer();
+              break;
+            case "isRunning":
+              _wakeWordIsolate.isRunningCompleter
+                  .complete(message["isRunning"]);
+              _wakeWordIsolate.isRunningCompleter = Completer();
+              break;
+            case "availableWakeWordDetector":
+              _wakeWordIsolate.availableWakeWordDetectorCompleter
+                  .complete(message["availableWakeWordDetector"]);
+              _wakeWordIsolate.availableWakeWordDetectorCompleter = Completer();
+              break;
+            default:
+              throw UnimplementedError(
+                  "Undefined behavior for message: $message");
           }
-          if (message.containsKey("speechTotext")) {
-            rhasspyMqtt.speechTotext(message["speechTotext"]["dataAudio"],
-                cleanSession: message["speechTotext"]["cleanSession"]);
-          }
-          if (message.containsKey("textToIntent")) {
-            rhasspyMqtt.textToIntent(message["textToIntent"]["text"],
-                handle: message["textToIntent"]["handle"]);
-          }
-          if (message.containsKey("textToSpeech")) {
-            rhasspyMqtt.textToSpeech(message["textToSpeech"]["text"],
-                generateSessionId: message["textToSpeech"]
-                    ["generateSessionId"]);
-          }
-          if (message.containsKey("enableWakeWord")) {
-            rhasspyMqtt.enableWakeWord(message["enableWakeWord"]);
-          }
-          if (message.containsKey("startRecording")) {
-            _startRecordingCompleter.complete(message["startRecording"]);
-            _startRecordingCompleter = Completer();
-          }
-          if (message.containsKey("isRunning")) {
-            _wakeWordIsolate.isRunningCompleter.complete(message["isRunning"]);
-            _wakeWordIsolate.isRunningCompleter = Completer();
-          }
-          if (message.containsKey("availableWakeWordDetector")) {
-            _wakeWordIsolate.availableWakeWordDetectorCompleter
-                .complete(message["availableWakeWordDetector"]);
-            _wakeWordIsolate.availableWakeWordDetectorCompleter = Completer();
-          }
-        }
-        if (message is Uint8List) {
+        } else if (message is Uint8List) {
           audioStream.add(message);
         }
       },

@@ -267,18 +267,22 @@ class _HomePageState extends State<HomePage> {
               .show(context);
           return false;
         } else {
-          if (!rhasspyMqtt.isConnected) {
+          if (!(await rhasspyMqtt.isConnected)) {
             return await rhasspyMqtt.connect() == 0 ? true : false;
           } else {
             return true;
           }
         }
       } else {
-        if (rhasspyMqtt.isConnected) {
+        if (await rhasspyMqtt.isConnected) {
+          print("is connected");
           return true;
         } else {
-          int result = rhasspyMqtt.lastConnectionCode;
-          print("mqtt not connected ${rhasspyMqtt.lastConnectionCode}");
+          int result = await rhasspyMqtt.connect();
+          if (result == 0) {
+            return true;
+          }
+          print("mqtt not connected $result");
           if (result == 1) {
             await FlushbarHelper.createError(message: "failed to connect")
                 .show(context);
@@ -373,14 +377,6 @@ class _HomePageState extends State<HomePage> {
             // if isolate is not yet ready wait
             await mqttReady.future;
           }
-
-          if (!rhasspyMqtt.isConnected) {
-            await rhasspyMqtt.connected.timeout(
-              Duration(seconds: 4),
-              onTimeout: () => null,
-            );
-          }
-
           if (!(await _checkMqtt(context))) {
             print("mqtt not ready");
             return;

@@ -6,6 +6,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:mqtt_client/mqtt_client.dart';
 import 'package:mqtt_client/mqtt_server_client.dart';
+import 'package:rhasspy_mobile_app/rhasspy_dart/exceptions.dart';
 import 'package:rhasspy_mobile_app/wake_word/wake_word_base.dart';
 
 import 'parse_messages.dart';
@@ -20,12 +21,16 @@ class RhasspyMqttApi {
   @visibleForTesting
   MqttServerClient client;
   bool get isConnected {
-    MqttConnectionState state = client.connectionStatus.state;
-    if (state == MqttConnectionState.disconnected ||
-        state == MqttConnectionState.disconnecting) {
+    if (_lastPong != null &&
+        (DateTime.now().difference(_lastPong)).inSeconds >
+            keepAlivePeriod + 1) {
       return false;
-    } else {
+    }
+    MqttConnectionState state = client.connectionStatus.state;
+    if (state == MqttConnectionState.connected) {
       return true;
+    } else {
+      return false;
     }
   }
 
@@ -34,6 +39,10 @@ class RhasspyMqttApi {
   bool _badCertificate = false;
   bool _intentNeedHandle = true;
   WakeWordBase _wakeWord;
+  bool autoReconnect = true;
+  int keepAlivePeriod = 15;
+  Timer _keepAliveTimer;
+  bool _keepAlivePong = false;
 
   /// becomes true when there is an active session.
   bool isSessionStarted = false;
@@ -45,6 +54,7 @@ class RhasspyMqttApi {
   StreamSubscription _audioStreamSubscription;
   Completer<bool> _completerConnected = Completer();
   Future<bool> get connected => _completerConnected.future;
+  DateTime _lastPong;
 
   /// the time to wait before calling onTimeoutIntentHandle
   /// if endSession or continueSession is not received
@@ -98,12 +108,14 @@ class RhasspyMqttApi {
     if (client == null)
       client = MqttServerClient.withPort(host, siteId, port,
           maxConnectionAttempts: 1);
-    client.keepAlivePeriod = 20;
+    client.keepAlivePeriod = keepAlivePeriod;
     client.onConnected = _onConnected;
     client.onDisconnected = _onDisconnected;
     client.pongCallback = _pong;
-    client.autoReconnect = true;
+    client.autoReconnect = autoReconnect;
     client.onAutoReconnect = _onAutoReconnect;
+    client.onAutoReconnected = _onConnected;
+
     if (ssl) {
       client.secure = true;
       client.onBadCertificate = (dynamic certificate) {
@@ -146,6 +158,7 @@ class RhasspyMqttApi {
           }
           if ((_currentSessionId == null && !isSessionStarted) &&
               !_streamActive) {
+            _checkConnection();
             _streamActive = true;
             _currentSessionId = _generateId();
             _asrStartListening(sessionId: _currentSessionId);
@@ -185,10 +198,8 @@ class RhasspyMqttApi {
       client.disconnect();
       _completerConnected.complete(false);
       _completerConnected = Completer<bool>();
-
       return 2;
     } else {
-      client.disconnect();
       _completerConnected.complete(false);
       _completerConnected = Completer<bool>();
       if (_badCertificate) {
@@ -268,6 +279,7 @@ class RhasspyMqttApi {
   /// if [cleanSession] is true after the command stopListening
   /// delete the sessionId.
   void speechTotext(Uint8List dataAudio, {bool cleanSession = true}) {
+    _checkConnection();
     if (_currentSessionId == null) _currentSessionId = _generateId();
     _asrToggleOn();
     _asrStartListening(sessionId: _currentSessionId);
@@ -347,7 +359,7 @@ class RhasspyMqttApi {
   /// after can be received by the function [onReceivedIntent].
   /// if [handle] is equally true the intent can be handle
   void textToIntent(String text, {bool handle = true}) {
-    // TODO Handle intent
+    _checkConnection();
     if (isSessionStarted) return;
     if (handle) {
       if (_currentSessionId == null) _currentSessionId = _generateId();
@@ -364,6 +376,7 @@ class RhasspyMqttApi {
   /// if [generateSessionId] is equally true will be generated
   /// a new session id that will be sent in the request
   void textToSpeech(String text, {bool generateSessionId = false}) {
+    _checkConnection();
     if (generateSessionId) {
       if (_currentSessionId == null) _currentSessionId = _generateId();
     }
@@ -393,8 +406,7 @@ class RhasspyMqttApi {
           _playFinished(lastMessage.topic.split("/").last);
         }
       });
-    }
-    if (lastMessage.topic == "hermes/asr/textCaptured") {
+    } else if (lastMessage.topic == "hermes/asr/textCaptured") {
       final MqttPublishMessage recMessPayload = lastMessage.payload;
       AsrTextCaptured textCaptured = AsrTextCaptured.fromJson(json.decode(
           MqttPublishPayload.bytesToStringAsString(
@@ -405,8 +417,7 @@ class RhasspyMqttApi {
           _asrStopListening(sessionId: _currentSessionId);
         }
       }
-    }
-    if (lastMessage.topic == "hermes/dialogueManager/endSession") {
+    } else if (lastMessage.topic == "hermes/dialogueManager/endSession") {
       final MqttPublishMessage recMessPayload = lastMessage.payload;
       DialogueEndSession endSession = DialogueEndSession.fromJson(json.decode(
           MqttPublishPayload.bytesToStringAsString(
@@ -423,8 +434,7 @@ class RhasspyMqttApi {
         _streamActive = false;
         _countChunk = 0;
       }
-    }
-    if (lastMessage.topic == "hermes/dialogueManager/continueSession") {
+    } else if (lastMessage.topic == "hermes/dialogueManager/continueSession") {
       final MqttPublishMessage recMessPayload = lastMessage.payload;
       DialogueContinueSession continueSession =
           DialogueContinueSession.fromJson(json.decode(
@@ -446,8 +456,7 @@ class RhasspyMqttApi {
           }
         });
       }
-    }
-    if (lastMessage.topic == "hermes/dialogueManager/startSession") {
+    } else if (lastMessage.topic == "hermes/dialogueManager/startSession") {
       final MqttPublishMessage recMessPayload = lastMessage.payload;
       DialogueStartSession startSession = DialogueStartSession.fromJson(
           json.decode(MqttPublishPayload.bytesToStringAsString(
@@ -460,8 +469,7 @@ class RhasspyMqttApi {
         }
         if (onStartSession != null) onStartSession(startSession);
       }
-    }
-    if (lastMessage.topic == "hermes/dialogueManager/sessionStarted") {
+    } else if (lastMessage.topic == "hermes/dialogueManager/sessionStarted") {
       final MqttPublishMessage recMessPayload = lastMessage.payload;
       DialogueSessionStarted startedSession = DialogueSessionStarted.fromJson(
           json.decode(MqttPublishPayload.bytesToStringAsString(
@@ -478,8 +486,7 @@ class RhasspyMqttApi {
           startRecording();
         }
       }
-    }
-    if (lastMessage.topic == "hermes/dialogueManager/sessionEnded") {
+    } else if (lastMessage.topic == "hermes/dialogueManager/sessionEnded") {
       final MqttPublishMessage recMessPayload = lastMessage.payload;
       DialogueSessionEnded sessionEnded = DialogueSessionEnded.fromJson(
           json.decode(MqttPublishPayload.bytesToStringAsString(
@@ -488,8 +495,7 @@ class RhasspyMqttApi {
         stopRecording();
         isSessionStarted = false;
       }
-    }
-    if (lastMessage.topic == "hermes/nlu/intentParsed") {
+    } else if (lastMessage.topic == "hermes/nlu/intentParsed") {
       final MqttPublishMessage recMessPayload = lastMessage.payload;
       NluIntentParsed intentParsed = NluIntentParsed.fromJson(json.decode(
           MqttPublishPayload.bytesToStringAsString(
@@ -517,8 +523,7 @@ class RhasspyMqttApi {
           });
         }
       }
-    }
-    if (lastMessage.topic == "hermes/nlu/intentNotRecognized") {
+    } else if (lastMessage.topic == "hermes/nlu/intentNotRecognized") {
       final MqttPublishMessage recMessPayload = lastMessage.payload;
       NluIntentNotRecognized intentNotRecognized =
           NluIntentNotRecognized.fromJson(json.decode(
@@ -526,9 +531,9 @@ class RhasspyMqttApi {
                   recMessPayload.payload.message)));
       if (intentNotRecognized.siteId == siteId) {
         onIntentNotRecognized(intentNotRecognized);
+        stopRecording();
       }
-    }
-    if (lastMessage.topic
+    } else if (lastMessage.topic
         .contains(RegExp(r"^hermes/hotword/([^/]+)/detected$"))) {
       final MqttPublishMessage recMessPayload = lastMessage.payload;
       HotwordDetected hotwordDetected = HotwordDetected.fromJson(json.decode(
@@ -538,8 +543,7 @@ class RhasspyMqttApi {
         _lastStartSession = null;
         onHotwordDetected(hotwordDetected);
       }
-    }
-    if (lastMessage.topic == "hermes/hotword/toggleOn") {
+    } else if (lastMessage.topic == "hermes/hotword/toggleOn") {
       final MqttPublishMessage recMessPayload = lastMessage.payload;
       HotwordToggle hotwordToggleOn = HotwordToggle.fromJson(json.decode(
           MqttPublishPayload.bytesToStringAsString(
@@ -551,8 +555,7 @@ class RhasspyMqttApi {
           });
         }
       }
-    }
-    if (lastMessage.topic == "hermes/hotword/toggleOff") {
+    } else if (lastMessage.topic == "hermes/hotword/toggleOff") {
       final MqttPublishMessage recMessPayload = lastMessage.payload;
       HotwordToggle hotwordToggleOff = HotwordToggle.fromJson(json.decode(
           MqttPublishPayload.bytesToStringAsString(
@@ -580,14 +583,38 @@ class RhasspyMqttApi {
       await _audioStreamSubscription.cancel();
     if (ssl) _securityContext = null;
     client.disconnect();
+    _keepAliveTimer.cancel();
     client = null;
   }
 
   void _pong() {
+    _keepAlivePong = true;
+    _lastPong = DateTime.now();
     print("pong");
   }
 
   void _onConnected() {
+    _lastPong = DateTime.now();
+    if (!isConnected) return;
+    print("connected");
+    if (_keepAliveTimer != null && _keepAliveTimer.isActive)
+      _keepAliveTimer.cancel();
+    _keepAliveTimer =
+        Timer.periodic(Duration(seconds: keepAlivePeriod + 1), (Timer t) {
+      if (!_keepAlivePong) {
+        print("try connect keepAliveTimer");
+        if (client.connectionStatus.state == MqttConnectionState.connecting) {
+          return;
+        }
+        connect().then((value) {
+          if (value != 0) {
+            print("cancelling timer");
+            _keepAliveTimer.cancel();
+          }
+        });
+      }
+      _keepAlivePong = false;
+    });
     client.subscribe(
         "hermes/audioServer/${siteId.trim()}/playBytes/#", MqttQos.atLeastOnce);
     client.subscribe("hermes/asr/textCaptured", MqttQos.atLeastOnce);
@@ -607,12 +634,35 @@ class RhasspyMqttApi {
   }
 
   void _onAutoReconnect() {
-    client.subscriptionsManager?.subscriptions?.clear();
-    client.subscriptionsManager?.pendingUnsubscriptions?.clear();
-    onDisconnected();
+    _onDisconnected();
+  }
+
+  void _checkConnection() async {
+    if (!isConnected) {
+      if (client.connectionStatus.state == MqttConnectionState.connecting) {
+        await Future.delayed(Duration(seconds: 1));
+        if (isConnected) {
+          return;
+        }
+      }
+      if (autoReconnect) {
+        client.doAutoReconnect();
+        await Future.delayed(Duration(seconds: 1));
+        if (!isConnected) {
+          print("not connected ${client.connectionStatus.state}");
+          throw NotConnected();
+        }
+      } else {
+        if (await connect() != 0) {
+          print("not connected ${client.connectionStatus.state}");
+          throw NotConnected();
+        }
+      }
+    }
   }
 
   void _onDisconnected() {
+    print("disconnected, state ${client.connectionStatus.state}");
     onDisconnected();
   }
 }

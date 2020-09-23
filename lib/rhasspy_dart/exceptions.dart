@@ -1,0 +1,1 @@
+class NotConnected implements Exception {}
