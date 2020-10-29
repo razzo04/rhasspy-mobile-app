@@ -197,15 +197,13 @@ class Range {
 
 class DialogueEndSession {
   String sessionId;
-  String siteId;
   String text;
   String customData;
 
-  DialogueEndSession({this.sessionId, this.siteId, this.text, this.customData});
+  DialogueEndSession({this.sessionId, this.text, this.customData});
 
   DialogueEndSession.fromJson(Map<String, dynamic> json) {
     sessionId = json['sessionId'];
-    siteId = json['siteId'];
     text = json['text'];
     customData = json['customData'];
   }
@@ -213,7 +211,6 @@ class DialogueEndSession {
   Map<String, dynamic> toJson() {
     final Map<String, dynamic> data = new Map<String, dynamic>();
     data['sessionId'] = this.sessionId;
-    data['siteId'] = this.siteId;
     data['text'] = this.text;
     data['customData'] = this.customData;
     return data;
@@ -222,7 +219,6 @@ class DialogueEndSession {
 
 class DialogueContinueSession {
   String sessionId;
-  String siteId;
   String customData;
   String text;
   List<String> intentFilter;
@@ -232,7 +228,6 @@ class DialogueContinueSession {
 
   DialogueContinueSession(
       {this.sessionId,
-      this.siteId,
       this.customData,
       this.text,
       this.intentFilter,
@@ -242,7 +237,6 @@ class DialogueContinueSession {
 
   DialogueContinueSession.fromJson(Map<String, dynamic> json) {
     sessionId = json['sessionId'];
-    siteId = json['siteId'];
     customData = json['customData'];
     text = json['text'];
     if (json['intentFilter'] != null)
@@ -260,7 +254,6 @@ class DialogueContinueSession {
   Map<String, dynamic> toJson() {
     final Map<String, dynamic> data = new Map<String, dynamic>();
     data['sessionId'] = this.sessionId;
-    data['siteId'] = this.siteId;
     data['customData'] = this.customData;
     data['text'] = this.text;
     data['intentFilter'] = this.intentFilter;

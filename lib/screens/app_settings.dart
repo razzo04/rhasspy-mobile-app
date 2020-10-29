@@ -127,23 +127,28 @@ class _AppSettingsState extends State<AppSettings> {
                     FlatButton(
                       onPressed: () async {
                         if (await Permission.storage.request().isGranted) {
-                          File certificate = await FilePicker.getFile();
-                          if (certificate != null) {
-                            Directory appDocDirectory =
-                                await getApplicationDocumentsDirectory();
-                            String pathFile =
-                                appDocDirectory.path + "/SslCertificate.pem";
-                            try {
-                              certificate.copySync(pathFile);
-                            } catch (e) {
-                              FlushbarHelper.createError(
-                                      message: "cannot save the certificate")
+                          var result = (await FilePicker.platform
+                                  .pickFiles(allowMultiple: false))
+                              ?.files;
+                          if (result != null && result.isNotEmpty) {
+                            File certificate = File(result.first.path);
+                            if (certificate != null) {
+                              Directory appDocDirectory =
+                                  await getApplicationDocumentsDirectory();
+                              String pathFile =
+                                  appDocDirectory.path + "/SslCertificate.pem";
+                              try {
+                                certificate.copySync(pathFile);
+                              } catch (e) {
+                                FlushbarHelper.createError(
+                                        message: "cannot save the certificate")
+                                    .show(context);
+                                return;
+                              }
+                              FlushbarHelper.createSuccess(
+                                      message: "certificate added correctly")
                                   .show(context);
-                              return;
                             }
-                            FlushbarHelper.createSuccess(
-                                    message: "certificate added correctly")
-                                .show(context);
                           }
                         }
                       },
@@ -470,23 +475,28 @@ class _AppSettingsState extends State<AppSettings> {
             FlatButton(
               onPressed: () async {
                 if (await Permission.storage.request().isGranted) {
-                  File certificate = await FilePicker.getFile();
-                  if (certificate != null) {
-                    Directory appDocDirectory =
-                        await getApplicationDocumentsDirectory();
-                    String pathFile =
-                        appDocDirectory.path + "/mqttCertificate.pem";
-                    try {
-                      certificate.copySync(pathFile);
-                    } catch (e) {
-                      FlushbarHelper.createError(
-                              message: "cannot save the certificate")
+                  var result = (await FilePicker.platform
+                          .pickFiles(allowMultiple: false))
+                      ?.files;
+                  if (result != null && result.isNotEmpty) {
+                    File certificate = File(result.first.path);
+                    if (certificate != null) {
+                      Directory appDocDirectory =
+                          await getApplicationDocumentsDirectory();
+                      String pathFile =
+                          appDocDirectory.path + "/mqttCertificate.pem";
+                      try {
+                        certificate.copySync(pathFile);
+                      } catch (e) {
+                        FlushbarHelper.createError(
+                                message: "cannot save the certificate")
+                            .show(context);
+                        return;
+                      }
+                      FlushbarHelper.createSuccess(
+                              message: "certificate added correctly")
                           .show(context);
-                      return;
                     }
-                    FlushbarHelper.createSuccess(
-                            message: "certificate added correctly")
-                        .show(context);
                   }
                 }
               },

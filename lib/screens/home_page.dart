@@ -185,14 +185,17 @@ class _HomePageState extends State<HomePage> {
                   FlatButton(
                       onPressed: () async {
                         if (await Permission.storage.request().isGranted) {
-                          var file =
-                              await FilePicker.getFile(type: FileType.audio);
-                          if (file != null) {
+                          var result = await FilePicker.platform
+                              .pickFiles(type: FileType.audio);
+                          if (result?.files != null &&
+                              result.files.isNotEmpty) {
                             if (!((await _prefs).getBool("MQTT") ?? false)) {
                               if (!await _checkRhasspyIsReady()) {
                                 return;
                               }
-                              rhasspy.speechToText(file).then((value) {
+                              rhasspy
+                                  .speechToText(File(result.files.first.path))
+                                  .then((value) {
                                 setState(
                                   () {
                                     textEditingController.value =
@@ -211,7 +214,9 @@ class _HomePageState extends State<HomePage> {
                               if (!(await _checkMqtt(context))) {
                                 return;
                               }
-                              rhasspyMqtt.speechTotext(file.readAsBytesSync());
+                              rhasspyMqtt.speechTotext(
+                                  File(result.files.first.path)
+                                      .readAsBytesSync());
                             }
                           }
                         }
@@ -485,7 +490,7 @@ class _HomePageState extends State<HomePage> {
       requestSoundPermission: false,
     );
     var initializationSettings = InitializationSettings(
-        initializationSettingsAndroid, initializationSettingsIOS);
+        android: initializationSettingsAndroid, iOS: initializationSettingsIOS);
     flutterLocalNotificationsPlugin.initialize(initializationSettings);
   }
 
@@ -496,10 +501,11 @@ class _HomePageState extends State<HomePage> {
       String payload}) async {
     var androidPlatformChannelSpecifics = AndroidNotificationDetails(
         channelId, channelName, channelDescription,
-        importance: Importance.Max, priority: Priority.High);
+        importance: Importance.max, priority: Priority.high);
     var iOSPlatformChannelSpecifics = IOSNotificationDetails();
     var platformChannelSpecifics = NotificationDetails(
-        androidPlatformChannelSpecifics, iOSPlatformChannelSpecifics);
+        android: androidPlatformChannelSpecifics,
+        iOS: iOSPlatformChannelSpecifics);
     await flutterLocalNotificationsPlugin.show(
         Random().nextInt(1000), title, body, platformChannelSpecifics);
   }

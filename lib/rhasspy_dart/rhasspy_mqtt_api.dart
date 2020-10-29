@@ -423,7 +423,7 @@ class RhasspyMqttApi {
           MqttPublishPayload.bytesToStringAsString(
               recMessPayload.payload.message)));
 
-      if (endSession.siteId == siteId) {
+      if (endSession.sessionId == _currentSessionId) {
         _intentHandled = true;
         stopRecording();
         if (!isSessionStarted) {
@@ -441,7 +441,7 @@ class RhasspyMqttApi {
               MqttPublishPayload.bytesToStringAsString(
                   recMessPayload.payload.message)));
 
-      if (continueSession.siteId == siteId) {
+      if (continueSession.sessionId == _currentSessionId) {
         _intentHandled = true;
         if (!isSessionStarted) {
           _asrStopListening();
