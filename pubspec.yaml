@@ -1,5 +1,5 @@
 name: rhasspy_mobile_app
-description: A simple app to interact with rhasspy.
+description: A simple app to  get interact with rhasspy.
 
 # The following line prevents the package from being accidentally published to
 # pub.dev using `pub publish`. This is preferred for private packages.
