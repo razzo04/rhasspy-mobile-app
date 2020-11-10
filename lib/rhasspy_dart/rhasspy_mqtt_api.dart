@@ -65,7 +65,7 @@ class RhasspyMqttApi {
 
   /// call when audio data are available to play.
   /// if the function returns true send playFinished
-  Future<bool> Function(List<int>) onReceivedAudio;
+  Future<bool> Function(Uint8List) onReceivedAudio;
   void Function(DialogueEndSession) onReceivedEndSession;
   void Function(DialogueContinueSession) onReceivedContinueSession;
   void Function(NluIntentParsed) onTimeoutIntentHandle;
@@ -401,7 +401,8 @@ class RhasspyMqttApi {
       print("received audio");
       final MqttPublishMessage recMessPayload = lastMessage.payload;
       var buffer = recMessPayload.payload.message;
-      onReceivedAudio(buffer.toList()).then((value) {
+      onReceivedAudio(Uint8List.view(buffer.buffer, buffer.offsetInBytes))
+          .then((value) {
         if (value) {
           _playFinished(lastMessage.topic.split("/").last);
         }

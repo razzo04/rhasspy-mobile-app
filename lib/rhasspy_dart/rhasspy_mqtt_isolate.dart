@@ -19,6 +19,7 @@ class RhasspyMqttIsolate {
   Stream<Uint8List> audioStream;
   Completer<bool> _isConnectedCompleter = Completer<bool>();
   Future<bool> get isConnected {
+    if (_sendPort == null) return Future.value(false);
     _sendPort.send("isConnected");
     return _isConnectedCompleter.future;
   }
@@ -40,7 +41,7 @@ class RhasspyMqttIsolate {
   void Function(NluIntentParsed) onReceivedIntent;
   void Function(AsrTextCaptured) onReceivedText;
   void Function(NluIntentNotRecognized) onIntentNotRecognized;
-  Future<bool> Function(List<int>) onReceivedAudio;
+  Future<bool> Function(Uint8List) onReceivedAudio;
   void Function(DialogueEndSession) onReceivedEndSession;
   void Function(DialogueContinueSession) onReceivedContinueSession;
   void Function(HotwordDetected) onHotwordDetected;

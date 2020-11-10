@@ -25,10 +25,9 @@ dependencies:
     sdk: flutter 
   shared_preferences: ^0.5.12+2
   permission_handler: ^5.0.1+1    
-  flutter_audio_recorder: ^0.5.5
   path_provider:
   file_picker: ^2.0.11
-  audioplayers: ^0.16.1
+  flutter_sound: ^6.4.2+1
   dio: ^3.0.10
   flushbar: ^1.10.4
   mqtt_client: ^8.0.0
