@@ -408,9 +408,8 @@ class RhasspyMqttApi {
       });
     } else if (lastMessage.topic == "hermes/asr/textCaptured") {
       final MqttPublishMessage recMessPayload = lastMessage.payload;
-      AsrTextCaptured textCaptured = AsrTextCaptured.fromJson(json.decode(
-          MqttPublishPayload.bytesToStringAsString(
-              recMessPayload.payload.message)));
+      AsrTextCaptured textCaptured = AsrTextCaptured.fromJson(
+          json.decode(Utf8Decoder().convert(recMessPayload.payload.message)));
       if (textCaptured.siteId == siteId) {
         onReceivedText(textCaptured);
         if (!isSessionStarted) {
@@ -419,9 +418,8 @@ class RhasspyMqttApi {
       }
     } else if (lastMessage.topic == "hermes/dialogueManager/endSession") {
       final MqttPublishMessage recMessPayload = lastMessage.payload;
-      DialogueEndSession endSession = DialogueEndSession.fromJson(json.decode(
-          MqttPublishPayload.bytesToStringAsString(
-              recMessPayload.payload.message)));
+      DialogueEndSession endSession = DialogueEndSession.fromJson(
+          json.decode(Utf8Decoder().convert(recMessPayload.payload.message)));
 
       if (endSession.sessionId == _currentSessionId) {
         _intentHandled = true;
@@ -437,9 +435,8 @@ class RhasspyMqttApi {
     } else if (lastMessage.topic == "hermes/dialogueManager/continueSession") {
       final MqttPublishMessage recMessPayload = lastMessage.payload;
       DialogueContinueSession continueSession =
-          DialogueContinueSession.fromJson(json.decode(
-              MqttPublishPayload.bytesToStringAsString(
-                  recMessPayload.payload.message)));
+          DialogueContinueSession.fromJson(json
+              .decode(Utf8Decoder().convert(recMessPayload.payload.message)));
 
       if (continueSession.sessionId == _currentSessionId) {
         _intentHandled = true;
@@ -459,8 +456,7 @@ class RhasspyMqttApi {
     } else if (lastMessage.topic == "hermes/dialogueManager/startSession") {
       final MqttPublishMessage recMessPayload = lastMessage.payload;
       DialogueStartSession startSession = DialogueStartSession.fromJson(
-          json.decode(MqttPublishPayload.bytesToStringAsString(
-              recMessPayload.payload.message)));
+          json.decode(Utf8Decoder().convert(recMessPayload.payload.message)));
       if (startSession.siteId == siteId) {
         _lastStartSession = startSession;
         if (startSession.init.type == "action") {
@@ -472,8 +468,7 @@ class RhasspyMqttApi {
     } else if (lastMessage.topic == "hermes/dialogueManager/sessionStarted") {
       final MqttPublishMessage recMessPayload = lastMessage.payload;
       DialogueSessionStarted startedSession = DialogueSessionStarted.fromJson(
-          json.decode(MqttPublishPayload.bytesToStringAsString(
-              recMessPayload.payload.message)));
+          json.decode(Utf8Decoder().convert(recMessPayload.payload.message)));
       if (startedSession.siteId == siteId) {
         if (_lastStartSession != null) {
           if (_lastStartSession.init.type == "action") {
@@ -489,17 +484,15 @@ class RhasspyMqttApi {
     } else if (lastMessage.topic == "hermes/dialogueManager/sessionEnded") {
       final MqttPublishMessage recMessPayload = lastMessage.payload;
       DialogueSessionEnded sessionEnded = DialogueSessionEnded.fromJson(
-          json.decode(MqttPublishPayload.bytesToStringAsString(
-              recMessPayload.payload.message)));
+          json.decode(Utf8Decoder().convert(recMessPayload.payload.message)));
       if (sessionEnded.siteId == siteId) {
         stopRecording();
         isSessionStarted = false;
       }
     } else if (lastMessage.topic == "hermes/nlu/intentParsed") {
       final MqttPublishMessage recMessPayload = lastMessage.payload;
-      NluIntentParsed intentParsed = NluIntentParsed.fromJson(json.decode(
-          MqttPublishPayload.bytesToStringAsString(
-              recMessPayload.payload.message)));
+      NluIntentParsed intentParsed = NluIntentParsed.fromJson(
+          json.decode(Utf8Decoder().convert(recMessPayload.payload.message)));
       if (intentParsed.siteId == siteId) {
         onReceivedIntent(intentParsed);
         if (!_intentNeedHandle) {
@@ -526,9 +519,8 @@ class RhasspyMqttApi {
     } else if (lastMessage.topic == "hermes/nlu/intentNotRecognized") {
       final MqttPublishMessage recMessPayload = lastMessage.payload;
       NluIntentNotRecognized intentNotRecognized =
-          NluIntentNotRecognized.fromJson(json.decode(
-              MqttPublishPayload.bytesToStringAsString(
-                  recMessPayload.payload.message)));
+          NluIntentNotRecognized.fromJson(json
+              .decode(Utf8Decoder().convert(recMessPayload.payload.message)));
       if (intentNotRecognized.siteId == siteId) {
         onIntentNotRecognized(intentNotRecognized);
         stopRecording();
@@ -536,18 +528,16 @@ class RhasspyMqttApi {
     } else if (lastMessage.topic
         .contains(RegExp(r"^hermes/hotword/([^/]+)/detected$"))) {
       final MqttPublishMessage recMessPayload = lastMessage.payload;
-      HotwordDetected hotwordDetected = HotwordDetected.fromJson(json.decode(
-          MqttPublishPayload.bytesToStringAsString(
-              recMessPayload.payload.message)));
+      HotwordDetected hotwordDetected = HotwordDetected.fromJson(
+          json.decode(Utf8Decoder().convert(recMessPayload.payload.message)));
       if (hotwordDetected.siteId == siteId) {
         _lastStartSession = null;
         onHotwordDetected(hotwordDetected);
       }
     } else if (lastMessage.topic == "hermes/hotword/toggleOn") {
       final MqttPublishMessage recMessPayload = lastMessage.payload;
-      HotwordToggle hotwordToggleOn = HotwordToggle.fromJson(json.decode(
-          MqttPublishPayload.bytesToStringAsString(
-              recMessPayload.payload.message)));
+      HotwordToggle hotwordToggleOn = HotwordToggle.fromJson(
+          json.decode(Utf8Decoder().convert(recMessPayload.payload.message)));
       if (hotwordToggleOn.siteId == siteId) {
         if (_wakeWord != null) {
           _wakeWord.isRunning.then((value) {
@@ -557,9 +547,8 @@ class RhasspyMqttApi {
       }
     } else if (lastMessage.topic == "hermes/hotword/toggleOff") {
       final MqttPublishMessage recMessPayload = lastMessage.payload;
-      HotwordToggle hotwordToggleOff = HotwordToggle.fromJson(json.decode(
-          MqttPublishPayload.bytesToStringAsString(
-              recMessPayload.payload.message)));
+      HotwordToggle hotwordToggleOff = HotwordToggle.fromJson(
+          json.decode(Utf8Decoder().convert(recMessPayload.payload.message)));
       if (hotwordToggleOff.siteId == siteId) {
         if (_wakeWord != null) {
           _wakeWord.isRunning.then((value) {
