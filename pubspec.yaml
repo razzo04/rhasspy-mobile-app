@@ -27,11 +27,11 @@ dependencies:
   permission_handler: ^5.0.1+1    
   flutter_audio_recorder: ^0.5.5
   path_provider:
-  file_picker: ^2.0.11
+  file_picker: ^2.0.13
   audioplayers: ^0.16.1
   dio: ^3.0.10
   flushbar: ^1.10.4
-  mqtt_client: ^8.0.0
+  mqtt_client: ^8.1.0
   provider: ^4.3.2+2
   flutter_local_notifications: ^3.0.1
 

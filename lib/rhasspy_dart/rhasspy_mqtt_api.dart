@@ -43,6 +43,7 @@ class RhasspyMqttApi {
   int keepAlivePeriod = 15;
   Timer _keepAliveTimer;
   bool _keepAlivePong = false;
+  bool _isWaitForHandleIntent = false;
 
   /// becomes true when there is an active session.
   bool isSessionStarted = false;
@@ -392,6 +393,7 @@ class RhasspyMqttApi {
     _currentSessionId = null;
     _streamActive = false;
     _countChunk = 0;
+    _isWaitForHandleIntent = false;
   }
 
   _onReceivedMessages(List<MqttReceivedMessage<MqttMessage>> messages) {
@@ -399,6 +401,16 @@ class RhasspyMqttApi {
     print("topic: ${lastMessage.topic}");
     if (lastMessage.topic.contains("hermes/audioServer/$siteId/playBytes/")) {
       print("received audio");
+      if (_isWaitForHandleIntent) {
+        Future.delayed(Duration(milliseconds: 500), () {
+          if (!_intentHandled) {
+            _intentHandled = true;
+            cleanSession();
+            stopRecording();
+          }
+        });
+      }
+
       final MqttPublishMessage recMessPayload = lastMessage.payload;
       var buffer = recMessPayload.payload.message;
       onReceivedAudio(buffer.toList()).then((value) {
@@ -439,6 +451,7 @@ class RhasspyMqttApi {
               .decode(Utf8Decoder().convert(recMessPayload.payload.message)));
 
       if (continueSession.sessionId == _currentSessionId) {
+        _isWaitForHandleIntent = false;
         _intentHandled = true;
         if (!isSessionStarted) {
           _asrStopListening();
@@ -502,10 +515,12 @@ class RhasspyMqttApi {
         }
         // if the intent is to be managed
         if (intentParsed.sessionId != null && _intentNeedHandle) {
+          _isWaitForHandleIntent = true;
           Future.delayed(Duration(seconds: timeOutIntent), () {
             if (_intentHandled) {
               /// intent handled correctly
               _intentHandled = false;
+              _isWaitForHandleIntent = false;
             } else {
               _currentSessionId = null;
               _streamActive = false;
@@ -572,7 +587,7 @@ class RhasspyMqttApi {
       await _audioStreamSubscription.cancel();
     if (ssl) _securityContext = null;
     client.disconnect();
-    _keepAliveTimer.cancel();
+    if (_keepAliveTimer != null) _keepAliveTimer.cancel();
     client = null;
   }
 
