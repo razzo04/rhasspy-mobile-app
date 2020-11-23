@@ -73,6 +73,7 @@ class RhasspyMqttApi {
   void Function(NluIntentNotRecognized) onIntentNotRecognized;
   void Function(HotwordDetected) onHotwordDetected;
   void Function() stopRecording;
+  void Function(double volume) onSetVolume;
 
   /// call when there is a need to record audio.
   /// if the function returns true enable asr system.
@@ -103,6 +104,7 @@ class RhasspyMqttApi {
     this.startRecording,
     this.audioStream,
     this.stopRecording,
+    this.onSetVolume,
     this.pemFilePath,
     this.client,
   }) {
@@ -571,6 +573,13 @@ class RhasspyMqttApi {
           });
         }
       }
+    } else if (lastMessage.topic == "rhasspy/audioServer/setVolume") {
+      final MqttPublishMessage recMessPayload = lastMessage.payload;
+      AudioSetVolume audioVolume = AudioSetVolume.fromJson(
+          json.decode(Utf8Decoder().convert(recMessPayload.payload.message)));
+      if (audioVolume.siteId == siteId) {
+        if (onSetVolume != null) onSetVolume(audioVolume.volume);
+      }
     }
   }
 
@@ -633,6 +642,7 @@ class RhasspyMqttApi {
     client.subscribe(
         "hermes/dialogueManager/sessionEnded", MqttQos.atLeastOnce);
     client.subscribe("hermes/nlu/intentNotRecognized", MqttQos.atLeastOnce);
+    client.subscribe("rhasspy/audioServer/setVolume", MqttQos.atLeastOnce);
     client.subscribe("hermes/hotword/#", MqttQos.atLeastOnce);
     onConnected();
   }

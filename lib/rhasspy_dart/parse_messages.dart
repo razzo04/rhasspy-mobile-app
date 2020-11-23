@@ -478,3 +478,22 @@ class HotwordToggle {
     return data;
   }
 }
+
+class AudioSetVolume {
+  double volume;
+  String siteId;
+
+  AudioSetVolume({this.volume, this.siteId});
+
+  AudioSetVolume.fromJson(Map<String, dynamic> json) {
+    volume = json['volume'];
+    siteId = json['siteId'];
+  }
+
+  Map<String, dynamic> toJson() {
+    final Map<String, dynamic> data = new Map<String, dynamic>();
+    data['volume'] = this.volume;
+    data['siteId'] = this.siteId;
+    return data;
+  }
+}

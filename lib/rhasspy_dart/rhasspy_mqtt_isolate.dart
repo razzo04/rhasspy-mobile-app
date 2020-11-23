@@ -50,6 +50,7 @@ class RhasspyMqttIsolate {
   void Function(DialogueStartSession) onStartSession;
   void Function() onConnected;
   void Function() onDisconnected;
+  void Function(double volume) onSetVolume;
 
   @override
   Future<bool> get connected async {
@@ -79,6 +80,7 @@ class RhasspyMqttIsolate {
       this.startRecording,
       this.audioStream,
       this.stopRecording,
+      this.onSetVolume,
       this.pemFilePath}) {
     _init();
   }
@@ -108,6 +110,7 @@ class RhasspyMqttIsolate {
     void Function() onDisconnected,
     void Function(DialogueStartSession) onStartSession,
     Future<bool> Function() startRecording,
+    void Function(double volume) onSetVolume,
     void Function() stopRecording,
     Stream<Uint8List> audioStream,
   }) {
@@ -124,6 +127,7 @@ class RhasspyMqttIsolate {
     this.onDisconnected = onDisconnected;
     this.startRecording = startRecording;
     this.stopRecording = stopRecording;
+    this.onSetVolume = onSetVolume;
     this.audioStream = audioStream;
     audioStream?.listen((event) {
       _sendPort.send(event);
@@ -261,6 +265,9 @@ class RhasspyMqttIsolate {
           _isConnectedCompleter.complete(message["IsConnected"]);
           _isConnectedCompleter = Completer<bool>();
           break;
+        case "onSetVolume":
+          onSetVolume(message["onSetVolume"]);
+          break;
         case "WakeWord":
           switch (message["WakeWord"]) {
             case "availableWakeWordDetector":
@@ -342,6 +349,8 @@ class RhasspyMqttIsolate {
             return _startRecordingCompleter.future;
           }, onIntentNotRecognized: (intent) {
             sendPort.send({"onIntentNotRecognized": intent});
+          }, onSetVolume: (volume) {
+            sendPort.send({"onSetVolume": volume});
           });
         } else if (message is String) {
           switch (message) {

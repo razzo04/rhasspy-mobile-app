@@ -49,6 +49,7 @@ class _HomePageState extends State<HomePage> {
   NluIntentParsed intent;
   FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin;
   bool _hotwordDetected = false;
+  double volume = 1;
 
   @override
   Widget build(BuildContext context) {
@@ -163,7 +164,8 @@ class _HomePageState extends State<HomePage> {
                                   "text_to_speech.wav";
                           File file = File(filePath);
                           file.writeAsBytesSync(audioData);
-                          audioPlayer.play(file.path, isLocal: true);
+                          audioPlayer.play(file.path,
+                              isLocal: true, volume: volume);
                         } else {
                           if (!(await _checkMqtt(context))) {
                             return;
@@ -244,7 +246,8 @@ class _HomePageState extends State<HomePage> {
                       appDocDirectory.path + "/speech_to_text.wav";
                   File audioFile = File(pathFile);
                   if (audioFile.existsSync()) {
-                    audioPlayer.play(audioFile.path, isLocal: true);
+                    audioPlayer.play(audioFile.path,
+                        isLocal: true, volume: volume);
                   } else {
                     FlushbarHelper.createError(
                             message: "record a message before playing it")
@@ -562,75 +565,78 @@ class _HomePageState extends State<HomePage> {
       }
     }
     rhasspyMqtt.subscribeCallback(
-      audioStream: prefs.getBool("SILENCE") ?? false
-          ? audioStreamcontroller.stream
-          : null,
-      onReceivedAudio: (value) async {
-        //TODO move to cache directory
-        String filePath = (await getApplicationDocumentsDirectory()).path +
-            "text_to_speech_mqtt.wav";
-        File file = File(filePath);
-        file.writeAsBytesSync(value);
-        if (audioPlayer.state == AudioPlayerState.PLAYING) {
-          /// wait until the audio is played entirely before playing another audio
-          audioPlayer.onPlayerCompletion.first.then((value) {
-            audioPlayer.play(filePath, isLocal: true);
+        audioStream: prefs.getBool("SILENCE") ?? false
+            ? audioStreamcontroller.stream
+            : null,
+        onReceivedAudio: (value) async {
+          //TODO move to cache directory
+          String filePath = (await getApplicationDocumentsDirectory()).path +
+              "text_to_speech_mqtt.wav";
+          File file = File(filePath);
+          file.writeAsBytesSync(value);
+          if (audioPlayer.state == AudioPlayerState.PLAYING) {
+            /// wait until the audio is played entirely before playing another audio
+            audioPlayer.onPlayerCompletion.first.then((value) {
+              audioPlayer.play(filePath, isLocal: true, volume: volume);
+              return true;
+            });
+          } else {
+            audioPlayer.play(filePath, isLocal: true, volume: volume);
+            await audioPlayer.onPlayerCompletion.first;
             return true;
+          }
+          return false;
+        },
+        onReceivedText: (textCapture) {
+          setState(() {
+            textEditingController.text = textCapture.text;
           });
-        } else {
-          audioPlayer.play(filePath, isLocal: true);
-          await audioPlayer.onPlayerCompletion.first;
+          rhasspyMqtt.textToIntent(textCapture.text, handle: handle);
+        },
+        onReceivedIntent: (intentParsed) {
+          print("Recognized intent: ${intentParsed.intent.intentName}");
+          setState(() {
+            intent = intentParsed;
+          });
+        },
+        onReceivedEndSession: (endSession) {
+          print(endSession.text);
+        },
+        onReceivedContinueSession: (continueSession) {
+          print(continueSession.text);
+        },
+        onTimeoutIntentHandle: (intentParsed) {
+          FlushbarHelper.createError(
+                  message:
+                      "no one managed the intent: ${intentParsed.intent.intentName}")
+              .show(context);
+          print(
+              "Impossible handling intent: ${intentParsed.intent.intentName}");
+        },
+        stopRecording: () async {
+          await _stopRecording();
+        },
+        startRecording: () async {
+          /// wait for the audio to be played after starting to listen
+          if (!_hotwordDetected) await audioPlayer.onPlayerCompletion.first;
+          _startRecording();
           return true;
-        }
-        return false;
-      },
-      onReceivedText: (textCapture) {
-        setState(() {
-          textEditingController.text = textCapture.text;
+        },
+        onIntentNotRecognized: (intent) {
+          FlushbarHelper.createError(message: "IntentNotRecognized")
+              .show(context);
+        },
+        onStartSession: (startSession) async {
+          if (startSession.init.type == "notification" &&
+              ((await _prefs).getBool("NOTIFICATION") ?? false)) {
+            _showNotification("Notification", startSession.init.text);
+          }
+        },
+        onHotwordDetected: (HotwordDetected hotwordDetected) {
+          _hotwordDetected = true;
+        },
+        onSetVolume: (volumeToSet) {
+          volume = volumeToSet;
         });
-        rhasspyMqtt.textToIntent(textCapture.text, handle: handle);
-      },
-      onReceivedIntent: (intentParsed) {
-        print("Recognized intent: ${intentParsed.intent.intentName}");
-        setState(() {
-          intent = intentParsed;
-        });
-      },
-      onReceivedEndSession: (endSession) {
-        print(endSession.text);
-      },
-      onReceivedContinueSession: (continueSession) {
-        print(continueSession.text);
-      },
-      onTimeoutIntentHandle: (intentParsed) {
-        FlushbarHelper.createError(
-                message:
-                    "no one managed the intent: ${intentParsed.intent.intentName}")
-            .show(context);
-        print("Impossible handling intent: ${intentParsed.intent.intentName}");
-      },
-      stopRecording: () async {
-        await _stopRecording();
-      },
-      startRecording: () async {
-        /// wait for the audio to be played after starting to listen
-        if (!_hotwordDetected) await audioPlayer.onPlayerCompletion.first;
-        _startRecording();
-        return true;
-      },
-      onIntentNotRecognized: (intent) {
-        FlushbarHelper.createError(message: "IntentNotRecognized")
-            .show(context);
-      },
-      onStartSession: (startSession) async {
-        if (startSession.init.type == "notification" &&
-            ((await _prefs).getBool("NOTIFICATION") ?? false)) {
-          _showNotification("Notification", startSession.init.text);
-        }
-      },
-      onHotwordDetected: (HotwordDetected hotwordDetected) {
-        _hotwordDetected = true;
-      },
-    );
   }
 }
