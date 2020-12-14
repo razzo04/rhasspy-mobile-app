@@ -8,7 +8,7 @@ import 'package:mqtt_client/mqtt_client.dart';
 import 'package:mqtt_client/mqtt_server_client.dart';
 import 'package:rhasspy_mobile_app/rhasspy_dart/exceptions.dart';
 import 'package:rhasspy_mobile_app/wake_word/wake_word_base.dart';
-
+import './utility/rhasspy_mqtt_logger.dart';
 import 'parse_messages.dart';
 
 class RhasspyMqttApi {
@@ -45,8 +45,10 @@ class RhasspyMqttApi {
   bool _keepAlivePong = false;
   bool _isWaitForHandleIntent = false;
 
-  /// becomes true when there is an active session.
-  bool isSessionStarted = false;
+  /// Becomes true when there is an active session and
+  /// there is a Dialogue Manager who manages the session.
+  bool isSessionManaged = false;
+  Logger log = Logger();
   DialogueStartSession _lastStartSession;
   Stream<Uint8List> audioStream;
   String pemFilePath;
@@ -122,7 +124,6 @@ class RhasspyMqttApi {
     if (ssl) {
       client.secure = true;
       client.onBadCertificate = (dynamic certificate) {
-        print("Bad certificate");
         _badCertificate = true;
         return false;
       };
@@ -146,11 +147,10 @@ class RhasspyMqttApi {
     bool isListening = false;
     if (audioStream != null) {
       _audioStreamSubscription = audioStream.listen((dataAudio) {
-        print("Received");
         // if you do not publish some data before start listening
         // rhasspy silence will not work properly
         if (_countChunk <= 2) {
-          if (isListening && isSessionStarted) _asrToggleOff();
+          if (isListening && isSessionManaged) _asrToggleOff();
           isListening = false;
           _publishAudioFrame(dataAudio);
           _countChunk++;
@@ -159,14 +159,14 @@ class RhasspyMqttApi {
             _asrToggleOn();
             isListening = true;
           }
-          if ((_currentSessionId == null && !isSessionStarted) &&
+          if ((_currentSessionId == null && !isSessionManaged) &&
               !_streamActive) {
             _checkConnection();
             _streamActive = true;
             _currentSessionId = _generateId();
             _asrStartListening(sessionId: _currentSessionId);
             _publishAudioFrame(dataAudio);
-            print("generate new data session");
+            log.log("generate new data session", Level.debug);
           } else {
             _publishAudioFrame(dataAudio);
           }
@@ -189,7 +189,7 @@ class RhasspyMqttApi {
       return 3;
     } catch (e) {}
     if (client.connectionStatus.state == MqttConnectionState.connected) {
-      print('Mosquitto client connected');
+      log.log("Mosquitto client connected", Level.info);
       client.updates.listen((value) => _onReceivedMessages(value));
       _completerConnected.complete(true);
       _completerConnected = Completer<bool>();
@@ -285,10 +285,12 @@ class RhasspyMqttApi {
     _checkConnection();
     if (_currentSessionId == null) _currentSessionId = _generateId();
     _asrToggleOn();
-    _asrStartListening(sessionId: _currentSessionId);
+
+    if (!isSessionManaged) _asrStartListening(sessionId: _currentSessionId);
     _publishAudioFrame(dataAudio);
     _asrStopListening(sessionId: _currentSessionId);
-    if (cleanSession) {
+    if (cleanSession && !isSessionManaged) {
+      log.log("cleaning session", Level.debug);
       _currentSessionId = null;
     }
   }
@@ -301,7 +303,6 @@ class RhasspyMqttApi {
   }
 
   String _generateId() {
-    debugPrint("generate id");
     String randomString = _getRandomString(36);
     randomString = randomString.replaceRange(8, 9, "-");
     randomString = randomString.replaceRange(13, 14, "-");
@@ -363,7 +364,7 @@ class RhasspyMqttApi {
   /// if [handle] is equally true the intent can be handle
   void textToIntent(String text, {bool handle = true}) {
     _checkConnection();
-    if (isSessionStarted) return;
+    if (isSessionManaged) return;
     if (handle) {
       if (_currentSessionId == null) _currentSessionId = _generateId();
     } else {
@@ -386,7 +387,7 @@ class RhasspyMqttApi {
     _ttsSay(text, sessionId: _currentSessionId);
   }
 
-  void stoplistening() {
+  void stopListening() {
     _asrStopListening(sessionId: _currentSessionId);
     if (audioStream != null) _streamActive = false;
   }
@@ -396,13 +397,14 @@ class RhasspyMqttApi {
     _streamActive = false;
     _countChunk = 0;
     _isWaitForHandleIntent = false;
+    _lastStartSession = null;
   }
 
   _onReceivedMessages(List<MqttReceivedMessage<MqttMessage>> messages) {
     var lastMessage = messages[0];
     print("topic: ${lastMessage.topic}");
     if (lastMessage.topic.contains("hermes/audioServer/$siteId/playBytes/")) {
-      print("received audio");
+      log.log("received audio", Level.debug);
       if (_isWaitForHandleIntent) {
         Future.delayed(Duration(milliseconds: 500), () {
           if (!_intentHandled) {
@@ -426,7 +428,7 @@ class RhasspyMqttApi {
           json.decode(Utf8Decoder().convert(recMessPayload.payload.message)));
       if (textCaptured.siteId == siteId) {
         onReceivedText(textCaptured);
-        if (!isSessionStarted) {
+        if (!isSessionManaged) {
           _asrStopListening(sessionId: _currentSessionId);
         }
       }
@@ -438,7 +440,7 @@ class RhasspyMqttApi {
       if (endSession.sessionId == _currentSessionId) {
         _intentHandled = true;
         stopRecording();
-        if (!isSessionStarted) {
+        if (!isSessionManaged) {
           _ttsSay(endSession.text, sessionId: _currentSessionId);
         }
         onReceivedEndSession(endSession);
@@ -455,14 +457,14 @@ class RhasspyMqttApi {
       if (continueSession.sessionId == _currentSessionId) {
         _isWaitForHandleIntent = false;
         _intentHandled = true;
-        if (!isSessionStarted) {
+        if (!isSessionManaged) {
           _asrStopListening();
           _asrToggleOff(reason: "ttsSay");
           _ttsSay(continueSession.text, sessionId: _currentSessionId);
         }
         onReceivedContinueSession(continueSession);
         startRecording().then((value) {
-          if (value && (!isSessionStarted)) {
+          if (value && (!isSessionManaged)) {
             _asrToggleOn(reason: "ttsSay");
             _asrStartListening(sessionId: _currentSessionId);
           }
@@ -475,7 +477,7 @@ class RhasspyMqttApi {
       if (startSession.siteId == siteId) {
         _lastStartSession = startSession;
         if (startSession.init.type == "action") {
-          isSessionStarted = true;
+          isSessionManaged = true;
           startRecording();
         }
         if (onStartSession != null) onStartSession(startSession);
@@ -492,7 +494,8 @@ class RhasspyMqttApi {
         } else {
           // Wake Word detected
           _currentSessionId = startedSession.sessionId;
-          isSessionStarted = true;
+          log.log("SessionId is $_currentSessionId", Level.debug);
+          isSessionManaged = true;
           startRecording();
         }
       }
@@ -502,7 +505,7 @@ class RhasspyMqttApi {
           json.decode(Utf8Decoder().convert(recMessPayload.payload.message)));
       if (sessionEnded.siteId == siteId) {
         stopRecording();
-        isSessionStarted = false;
+        isSessionManaged = false;
       }
     } else if (lastMessage.topic == "hermes/nlu/intentParsed") {
       final MqttPublishMessage recMessPayload = lastMessage.payload;
@@ -583,6 +586,13 @@ class RhasspyMqttApi {
     }
   }
 
+  void wake(HotwordDetected hotWord, String wakeWordId) {
+    if (hotWord.siteId == null) hotWord.siteId = siteId;
+
+    _publishString(
+        "hermes/hotword/$wakeWordId/detected", json.encode(hotWord.toJson()));
+  }
+
   void enableWakeWord(WakeWordBase wakeWord) {
     _wakeWord = wakeWord;
   }
@@ -603,25 +613,24 @@ class RhasspyMqttApi {
   void _pong() {
     _keepAlivePong = true;
     _lastPong = DateTime.now();
-    print("pong");
+    log.log("keepAlive", Level.debug);
   }
 
   void _onConnected() {
     _lastPong = DateTime.now();
     if (!isConnected) return;
-    print("connected");
+    log.log("connected", Level.info);
     if (_keepAliveTimer != null && _keepAliveTimer.isActive)
       _keepAliveTimer.cancel();
     _keepAliveTimer =
         Timer.periodic(Duration(seconds: keepAlivePeriod + 1), (Timer t) {
       if (!_keepAlivePong) {
-        print("try connect keepAliveTimer");
+        log.log("connected", Level.debug);
         if (client.connectionStatus.state == MqttConnectionState.connecting) {
           return;
         }
         connect().then((value) {
           if (value != 0) {
-            print("cancelling timer");
             _keepAliveTimer.cancel();
           }
         });
@@ -663,12 +672,14 @@ class RhasspyMqttApi {
         client.doAutoReconnect();
         await Future.delayed(Duration(seconds: 1));
         if (!isConnected) {
-          print("not connected ${client.connectionStatus.state}");
+          log.log(
+              "not connected ${client.connectionStatus.state}", Level.error);
           throw NotConnected();
         }
       } else {
         if (await connect() != 0) {
-          print("not connected ${client.connectionStatus.state}");
+          log.log(
+              "not connected ${client.connectionStatus.state}", Level.error);
           throw NotConnected();
         }
       }
@@ -676,7 +687,8 @@ class RhasspyMqttApi {
   }
 
   void _onDisconnected() {
-    print("disconnected, state ${client.connectionStatus.state}");
+    log.log(
+        "disconnected, state ${client.connectionStatus.state}", Level.warning);
     onDisconnected();
   }
 }

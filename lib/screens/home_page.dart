@@ -12,6 +12,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_audio_recorder/flutter_audio_recorder.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:rhasspy_mobile_app/main.dart';
 import 'package:rhasspy_mobile_app/rhasspy_dart/parse_messages.dart';
 import 'package:rhasspy_mobile_app/rhasspy_dart/rhasspy_api.dart';
 import 'package:rhasspy_mobile_app/rhasspy_dart/rhasspy_mqtt_isolate.dart';
@@ -44,7 +45,6 @@ class _HomePageState extends State<HomePage> {
       StreamController<Uint8List>();
   Timer timerForAudio;
   Future<SharedPreferences> _prefs = SharedPreferences.getInstance();
-  var _scaffoldKey = GlobalKey<ScaffoldState>();
   AudioRecorderIsolate audioRecorderIsolate;
   NluIntentParsed intent;
   FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin;
@@ -67,12 +67,11 @@ class _HomePageState extends State<HomePage> {
         }
       },
       child: Scaffold(
-        key: _scaffoldKey,
         appBar: AppBar(
-          title: Text("Rhasspy mobile app"),
+          title: const Text("Rhasspy mobile app"),
           actions: <Widget>[
             IconButton(
-              icon: Icon(Icons.settings),
+              icon: const Icon(Icons.settings),
               onPressed: () {
                 Navigator.pushNamed(context, AppSettings.routeName)
                     .then((value) {
@@ -90,14 +89,25 @@ class _HomePageState extends State<HomePage> {
               Center(
                 child: IconButton(
                   color: micColor,
-                  icon: Icon(Icons.mic),
+                  icon: const Icon(Icons.mic),
                   onPressed: () async {
+                    HotwordDetected hotWord = HotwordDetected();
+                    hotWord.currentSensitivity = 1;
+                    hotWord.sendAudioCaptured = true;
+                    hotWord.modelType = "personal";
                     if (((await _prefs).getBool("MQTT") ?? false) &&
                         ((await _prefs).getBool("SILENCE") ?? false)) {
                       if (await audioRecorderIsolate.isRecording) {
                         _stopRecording();
                         return;
                       } else {
+                        if (((await _prefs).getBool("EDIALOGUEMANAGER") ??
+                                false) &&
+                            !rhasspyMqtt.isSessionManaged) {
+                          rhasspyMqtt.wake(hotWord, "mobile-app");
+                          log.d("sending hotWord", "DIALOGUE");
+                          return;
+                        }
                         _startRecording();
                         return;
                       }
@@ -112,6 +122,14 @@ class _HomePageState extends State<HomePage> {
                       statusRecording = (await recorder.current()).status;
                     if (statusRecording == RecordingStatus.Unset ||
                         statusRecording == RecordingStatus.Stopped) {
+                      //TODO Clean
+                      if (((await _prefs).getBool("EDIALOGUEMANAGER") ??
+                              false) &&
+                          !rhasspyMqtt.isSessionManaged) {
+                        log.d("sending hotWord", "DIALOGUE");
+                        rhasspyMqtt.wake(hotWord, "mobile-app");
+                        return;
+                      }
                       _startRecording();
                     } else {
                       _stopRecording();
@@ -126,13 +144,13 @@ class _HomePageState extends State<HomePage> {
                     child: TextField(
                       maxLines: 3,
                       controller: textEditingController,
-                      decoration: InputDecoration(
+                      decoration: const InputDecoration(
                         labelText: "Speech to text or text to speech",
                         hintText:
                             "If you click on the microphone here the spoken text will appear if you write the text and click send will be pronounced",
-                        border: OutlineInputBorder(
-                          borderSide: BorderSide(width: 1),
-                          borderRadius: BorderRadius.all(
+                        border: const OutlineInputBorder(
+                          borderSide: const BorderSide(width: 1),
+                          borderRadius: const BorderRadius.all(
                             Radius.circular(20),
                           ),
                         ),
@@ -140,8 +158,10 @@ class _HomePageState extends State<HomePage> {
                     ),
                   ),
                   IconButton(
-                      icon: Icon(Icons.send),
+                      icon: const Icon(Icons.send),
                       onPressed: () async {
+                        log.d("Sending text: ${textEditingController.text}",
+                            "APP");
                         if (!((await _prefs).getBool("MQTT") ?? false)) {
                           if (!await _checkRhasspyIsReady()) {
                             // if we have not set mqtt and we cannot
@@ -223,10 +243,10 @@ class _HomePageState extends State<HomePage> {
                           }
                         }
                       },
-                      child: Text("Select an audio")),
+                      child: const Text("Select an audio")),
                   Row(
                     children: <Widget>[
-                      Text("Handle? "),
+                      const Text("Handle? "),
                       Checkbox(
                           value: handle,
                           onChanged: (bool value) {
@@ -250,12 +270,13 @@ class _HomePageState extends State<HomePage> {
                         isLocal: true, volume: volume);
                   } else {
                     FlushbarHelper.createError(
-                            message: "record a message before playing it")
+                            message: "Record a message before playing it")
                         .show(context);
+                    log.e("Record a message before playing it", "APP");
                   }
                 },
-                icon: Icon(Icons.play_arrow),
-                label: Text("Play last voice command"),
+                icon: const Icon(Icons.play_arrow),
+                label: const Text("Play last voice command"),
               ),
               IntentViewer(intent),
             ],
@@ -270,9 +291,9 @@ class _HomePageState extends State<HomePage> {
       if (rhasspyMqtt == null) {
         rhasspyMqtt = context.read<RhasspyMqttIsolate>();
         if (rhasspyMqtt == null) {
-          print("get reference");
           await FlushbarHelper.createError(message: "not ready yet")
               .show(context);
+          log.e("mqtt not ready yet", "MQTT");
           return false;
         } else {
           if (!(await rhasspyMqtt.isConnected)) {
@@ -283,14 +304,13 @@ class _HomePageState extends State<HomePage> {
         }
       } else {
         if (await rhasspyMqtt.isConnected) {
-          print("is connected");
           return true;
         } else {
           int result = await rhasspyMqtt.connect();
           if (result == 0) {
             return true;
           }
-          print("mqtt not connected $result");
+          log.e("mqtt not connected $result", "MQTT");
           if (result == 1) {
             await FlushbarHelper.createError(message: "failed to connect")
                 .show(context);
@@ -312,11 +332,12 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _stopRecording() async {
+    log.i("Stop recording", "APP");
     if (await WakeWordUtils().isRunning) WakeWordUtils().resume();
     if (((await _prefs).getBool("MQTT") ?? false) &&
         ((await _prefs).getBool("SILENCE") ?? false)) {
       audioRecorderIsolate.stopRecording();
-      rhasspyMqtt.stoplistening();
+      rhasspyMqtt.stopListening();
       setState(() {
         micColor = Colors.black;
       });
@@ -354,6 +375,9 @@ class _HomePageState extends State<HomePage> {
           // connected with mqtt we cannot send the audio
           return;
         }
+        if (_hotwordDetected) {
+          rhasspyMqtt.stopListening();
+        }
         rhasspyMqtt.speechTotext(File(result.path).readAsBytesSync(),
             cleanSession: !handle);
       }
@@ -363,9 +387,9 @@ class _HomePageState extends State<HomePage> {
   void _startRecording() async {
     if (await WakeWordUtils().isRunning) WakeWordUtils().pause();
     if (await Permission.microphone.request().isGranted) {
+      log.i("Start recording", "APP");
       if (recorder != null) statusRecording = (await recorder.current()).status;
       if (statusRecording == RecordingStatus.Recording) {
-        print("already recording");
         return;
       }
       _prefs.then((prefs) async {
@@ -378,7 +402,6 @@ class _HomePageState extends State<HomePage> {
             await audioRecorderIsolate.isReady;
           }
           if (await audioRecorderIsolate?.isRecording) {
-            print("already recording");
             return;
           }
           if (rhasspyMqtt == null) {
@@ -386,11 +409,11 @@ class _HomePageState extends State<HomePage> {
             await mqttReady.future;
           }
           if (!(await _checkMqtt(context))) {
-            print("mqtt not ready");
+            log.w("mqtt not ready", "MQTT");
             return;
           }
-          print("Send port: ${rhasspyMqtt.sendPort}");
-          rhasspyMqtt.cleanSession();
+          log.d("Send port: ${rhasspyMqtt.sendPort}", "MQTT");
+          if (!_hotwordDetected) rhasspyMqtt.cleanSession();
           audioRecorderIsolate.setOtherIsolate(rhasspyMqtt.sendPort);
           audioRecorderIsolate.startRecording();
           setState(() {
@@ -399,7 +422,7 @@ class _HomePageState extends State<HomePage> {
         } else {
           if (prefs.containsKey("MQTT") && prefs.getBool("MQTT")) {
             if (!(await _checkMqtt(context))) {
-              print("mqtt not ready");
+              log.w("Mqtt not ready", "MQTT");
               return;
             }
           } else {
@@ -431,6 +454,7 @@ class _HomePageState extends State<HomePage> {
       FlushbarHelper.createInformation(
               message: "please insert rhasspy server ip first")
           .show(context);
+      log.e("please insert rhasspy server ip first", "RHASSPY");
       return false;
     }
     int result = await rhasspy.checkConnection();
@@ -439,10 +463,12 @@ class _HomePageState extends State<HomePage> {
     }
     if (result == 1) {
       FlushbarHelper.createError(message: "failed to connect").show(context);
+      log.e("failed to connect", "RHASSPY");
       return false;
     }
     if (result == 2) {
       FlushbarHelper.createError(message: "bad certificate").show(context);
+      log.e("bad certificate", "RHASSPY");
       return false;
     }
   }
@@ -471,7 +497,7 @@ class _HomePageState extends State<HomePage> {
   void initState() {
     platform.setMethodCallHandler((call) async {
       if (call.method == "StartRecording") {
-        // called when you press on android widget
+        // called when you press on the android widget
         _startRecording();
         return true;
       }
@@ -551,7 +577,6 @@ class _HomePageState extends State<HomePage> {
 
   void _subscribeMqtt(SharedPreferences prefs) async {
     if (rhasspyMqtt?.audioStream == audioStreamcontroller.stream) {
-      print("already subscribe");
       return;
     }
     if (prefs.getBool("SILENCE") ?? false) {
@@ -569,7 +594,7 @@ class _HomePageState extends State<HomePage> {
             ? audioStreamcontroller.stream
             : null,
         onReceivedAudio: (value) async {
-          //TODO move to cache directory
+          log.d("Received audio to play", "DIALOGUE");
           String filePath = (await getApplicationDocumentsDirectory()).path +
               "text_to_speech_mqtt.wav";
           File file = File(filePath);
@@ -594,29 +619,34 @@ class _HomePageState extends State<HomePage> {
           rhasspyMqtt.textToIntent(textCapture.text, handle: handle);
         },
         onReceivedIntent: (intentParsed) {
-          print("Recognized intent: ${intentParsed.intent.intentName}");
+          log.i("Recognized intent: ${intentParsed.intent.intentName}",
+              "DIALOGUE");
           setState(() {
             intent = intentParsed;
           });
         },
         onReceivedEndSession: (endSession) {
-          print(endSession.text);
+          log.i("EndSession text: ${endSession.text}", "DIALOGUE");
+          _hotwordDetected = false;
         },
         onReceivedContinueSession: (continueSession) {
-          print(continueSession.text);
+          log.i("ContinueSession text: ${continueSession.text}", "DIALOGUE");
         },
         onTimeoutIntentHandle: (intentParsed) {
           FlushbarHelper.createError(
                   message:
                       "no one managed the intent: ${intentParsed.intent.intentName}")
               .show(context);
-          print(
-              "Impossible handling intent: ${intentParsed.intent.intentName}");
+          log.e("no one managed the intent:: ${intentParsed.intent.intentName}",
+              "DIALOGUE");
         },
         stopRecording: () async {
+          log.d("StopRecording request", "DIALOGUE");
           await _stopRecording();
         },
         startRecording: () async {
+          log.d("StartRecording request", "DIALOGUE");
+
           /// wait for the audio to be played after starting to listen
           if (!_hotwordDetected) await audioPlayer.onPlayerCompletion.first;
           _startRecording();
@@ -625,6 +655,7 @@ class _HomePageState extends State<HomePage> {
         onIntentNotRecognized: (intent) {
           FlushbarHelper.createError(message: "IntentNotRecognized")
               .show(context);
+          log.w("IntentNotRecognized", "DIALOGUE");
         },
         onStartSession: (startSession) async {
           if (startSession.init.type == "notification" &&
@@ -633,6 +664,7 @@ class _HomePageState extends State<HomePage> {
           }
         },
         onHotwordDetected: (HotwordDetected hotwordDetected) {
+          log.d("HotWord Detected ${hotwordDetected.modelId}", "DIALOGUE");
           _hotwordDetected = true;
         },
         onSetVolume: (volumeToSet) {

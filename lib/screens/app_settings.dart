@@ -3,14 +3,17 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flushbar/flushbar_helper.dart';
 import 'package:flutter/material.dart';
+import 'package:material_design_icons_flutter/material_design_icons_flutter.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:rhasspy_mobile_app/rhasspy_dart/rhasspy_api.dart';
 import 'package:rhasspy_mobile_app/rhasspy_dart/rhasspy_mqtt_isolate.dart';
+import 'package:rhasspy_mobile_app/utils/logger/log_page.dart';
 import 'package:rhasspy_mobile_app/wake_word/udp_wake_word.dart';
 import 'package:rhasspy_mobile_app/wake_word/wake_word_utils.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:provider/provider.dart';
+import 'package:rhasspy_mobile_app/main.dart' show log, mqttTag;
 
 class AppSettings extends StatefulWidget {
   static const String routeName = "/settings";
@@ -35,8 +38,15 @@ class _AppSettingsState extends State<AppSettings> {
     return Scaffold(
       appBar: AppBar(
         title: Text("App Settings"),
-        leading: new IconButton(
-          icon: new Icon(Icons.arrow_back),
+        actions: [
+          IconButton(
+              icon: Icon(MdiIcons.mathLog),
+              onPressed: () {
+                openLogPage(context, log);
+              })
+        ],
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
           onPressed: () {
             Navigator.pop(context);
           },
@@ -53,7 +63,7 @@ class _AppSettingsState extends State<AppSettings> {
               return SingleChildScrollView(
                 child: Column(
                   children: <Widget>[
-                    SizedBox(
+                    const SizedBox(
                       width: 10,
                       height: 10,
                     ),
@@ -85,29 +95,32 @@ class _AppSettingsState extends State<AppSettings> {
                             ip, port, prefs.getBool("SSL"),
                             securityContext: securityContext);
                         int result = await rhasspy.checkConnection();
-                        print(result);
                         if (result == 1) {
                           FlushbarHelper.createError(
                                   message: "cannot connect with rhasspy")
                               .show(context);
+                          log.e("cannot connect with rhasspy", "RHASSPY");
                         }
                         if (result == 2) {
                           FlushbarHelper.createError(message: "bad certificate")
                               .show(context);
+                          log.e("bad certificate", "RHASSPY");
                         }
                         if (result == 0) {
                           FlushbarHelper.createSuccess(
                                   message: "successful connection with rhasspy")
                               .show(context);
+                          log.i(
+                              "successful connection with rhasspy", "RHASSPY");
                         }
                         setState(() {
                           prefs.setString("Rhasspyip", value.trim());
                         });
                       },
-                      decoration: InputDecoration(
+                      decoration: const InputDecoration(
                         hintText: "192.168.1.15:12101",
                         labelText: "Rhasspy ip",
-                        border: OutlineInputBorder(
+                        border: const OutlineInputBorder(
                             borderSide: BorderSide(width: 1),
                             borderRadius:
                                 BorderRadius.all(Radius.circular(10))),
@@ -120,8 +133,8 @@ class _AppSettingsState extends State<AppSettings> {
                           prefs.setBool("SSL", value);
                         });
                       },
-                      title: Text("Enable SSL"),
-                      subtitle: Text(
+                      title: const Text("Enable SSL"),
+                      subtitle: const Text(
                           "enable ssl to connect only in secure connections"),
                     ),
                     FlatButton(
@@ -143,27 +156,29 @@ class _AppSettingsState extends State<AppSettings> {
                                 FlushbarHelper.createError(
                                         message: "cannot save the certificate")
                                     .show(context);
+                                log.e("cannot save the certificate", "APP");
                                 return;
                               }
                               FlushbarHelper.createSuccess(
                                       message: "certificate added correctly")
                                   .show(context);
+                              log.i("certificate added correctly", "APP");
                             }
                           }
                         }
                       },
-                      child: Tooltip(
+                      child: const Tooltip(
                         height: 40,
-                        child: Text("Add Self-signed certificate"),
+                        child: const Text("Add Self-signed certificate"),
                         message:
                             "You must add the certificate only if it has not been signed by a trusted CA",
                       ),
                     ),
-                    Divider(
+                    const Divider(
                       thickness: 2,
                     ),
                     _buildMqttWidget(prefs),
-                    Divider(
+                    const Divider(
                       thickness: 2,
                     ),
                     _buildWakeWordWidget(prefs),
@@ -173,14 +188,14 @@ class _AppSettingsState extends State<AppSettings> {
                           context: context,
                         );
                       },
-                      icon: Icon(Icons.info_outline),
-                      label: Text("Information"),
+                      icon: const Icon(Icons.info_outline),
+                      label: const Text("Information"),
                     ),
                   ],
                 ),
               );
             } else {
-              return Center(child: CircularProgressIndicator());
+              return const Center(child: CircularProgressIndicator());
             }
           }),
     );
@@ -203,7 +218,7 @@ class _AppSettingsState extends State<AppSettings> {
                   onFieldSubmitted: (value) {
                     prefs.setString("UDPHOST", value);
                   },
-                  decoration: InputDecoration(
+                  decoration: const InputDecoration(
                       hintText: "192.168.1.15:20000", labelText: "Host"),
                   validator: (value) {
                     if (value.isEmpty) {
@@ -296,7 +311,7 @@ class _AppSettingsState extends State<AppSettings> {
                   prefs.setBool("WAKEWORD", value);
                 });
               },
-              title: Text("Wake word"),
+              title: const Text("Wake word"),
             ),
           ],
         ),
@@ -317,8 +332,9 @@ class _AppSettingsState extends State<AppSettings> {
                   prefs.setBool("MQTT", value);
                 });
               },
-              title: Text("Enable MQTT"),
-              subtitle: Text("enable mqtt to get dialogue Manager support"),
+              title: const Text("Enable MQTT"),
+              subtitle:
+                  const Text("enable mqtt to get dialogue Manager support"),
             ),
             Padding(
               padding: const EdgeInsets.only(left: 16),
@@ -343,7 +359,7 @@ class _AppSettingsState extends State<AppSettings> {
             Padding(
               padding: const EdgeInsets.only(left: 16),
               child: TextFormField(
-                keyboardType: TextInputType.numberWithOptions(
+                keyboardType: const TextInputType.numberWithOptions(
                     signed: false, decimal: false),
                 initialValue: prefs.getInt("MQTTPORT") != null
                     ? prefs.getInt("MQTTPORT").toString()
@@ -362,7 +378,7 @@ class _AppSettingsState extends State<AppSettings> {
                 onFieldSubmitted: (value) {
                   prefs.setInt("MQTTPORT", int.parse(value));
                 },
-                decoration: InputDecoration(
+                decoration: const InputDecoration(
                   labelText: "Port",
                 ),
               ),
@@ -382,7 +398,7 @@ class _AppSettingsState extends State<AppSettings> {
                     return "the field cannot be empty";
                   }
                 },
-                decoration: InputDecoration(
+                decoration: const InputDecoration(
                   labelText: "Username",
                 ),
               ),
@@ -436,7 +452,7 @@ class _AppSettingsState extends State<AppSettings> {
                 onFieldSubmitted: (value) {
                   prefs.setString("SITEID", value.trim());
                 },
-                decoration: InputDecoration(
+                decoration: const InputDecoration(
                   labelText: "Siteid",
                 ),
               ),
@@ -448,8 +464,9 @@ class _AppSettingsState extends State<AppSettings> {
                   prefs.setBool("SILENCE", value);
                 });
               },
-              title: Text("Silence Detection"),
-              subtitle: Text("auto stop listening when silence is detected"),
+              title: const Text("Silence Detection"),
+              subtitle:
+                  const Text("auto stop listening when silence is detected"),
             ),
             SwitchListTile.adaptive(
               value: prefs.getBool("MQTTSSL") ?? false,
@@ -458,8 +475,8 @@ class _AppSettingsState extends State<AppSettings> {
                   prefs.setBool("MQTTSSL", value);
                 });
               },
-              title: Text("Enable SSL"),
-              subtitle: Text("enable secure connections for mqtt"),
+              title: const Text("Enable SSL"),
+              subtitle: const Text("enable secure connections for mqtt"),
             ),
             SwitchListTile.adaptive(
               value: prefs.getBool("NOTIFICATION") ?? false,
@@ -468,9 +485,20 @@ class _AppSettingsState extends State<AppSettings> {
                   prefs.setBool("NOTIFICATION", value);
                 });
               },
-              title: Text("Enable notification"),
-              subtitle: Text(
+              title: const Text("Enable notification"),
+              subtitle: const Text(
                   "when a notification start session arrives a notification will be sent"),
+            ),
+            SwitchListTile.adaptive(
+              value: prefs.getBool("EDIALOGUEMANAGER") ?? false,
+              onChanged: (value) {
+                setState(() {
+                  prefs.setBool("EDIALOGUEMANAGER", value);
+                });
+              },
+              title: const Text("Use external Dialogue Manager"),
+              subtitle: const Text(
+                  "When you click on the microphone will be sent a hotword detected so the session will be managed by an external Dialogue Manager."),
             ),
             FlatButton(
               onPressed: () async {
@@ -500,7 +528,7 @@ class _AppSettingsState extends State<AppSettings> {
                   }
                 }
               },
-              child: Tooltip(
+              child: const Tooltip(
                 height: 40,
                 child: Text("Add Self-signed certificate"),
                 message:
@@ -525,8 +553,8 @@ class _AppSettingsState extends State<AppSettings> {
                   }
                 }
               },
-              icon: Icon(Icons.check),
-              label: Text("Check connection"),
+              icon: const Icon(Icons.check),
+              label: const Text("Check connection"),
             ),
           ],
         ),
@@ -539,8 +567,8 @@ class _AppSettingsState extends State<AppSettings> {
             prefs.setBool("MQTT", value);
           });
         },
-        title: Text("Enable MQTT"),
-        subtitle: Text("enable mqtt to get dialogue Manager support"),
+        title: const Text("Enable MQTT"),
+        subtitle: const Text("enable mqtt to get dialogue Manager support"),
       );
     }
   }
@@ -562,21 +590,27 @@ class _AppSettingsState extends State<AppSettings> {
         prefs.getString("MQTTPASSWORD"),
         prefs.getString("SITEID"),
         certificatePath);
+    log.d("Connecting to mqtt", mqttTag);
     int result = await rhasspyMqtt.connect();
+    log.d("result code: $result", mqttTag);
     if (result == 0) {
       FlushbarHelper.createSuccess(
               message: "connection established with the broker")
           .show(context);
+      log.i("connection established with the broker", mqttTag);
     }
     if (result == 1) {
       FlushbarHelper.createError(message: "failed to connect").show(context);
+      log.e("failed to connect", mqttTag);
     }
     if (result == 2) {
       FlushbarHelper.createError(message: "incorrect credentials")
           .show(context);
+      log.e("incorrect credentials", mqttTag);
     }
     if (result == 3) {
       FlushbarHelper.createError(message: "bad certificate").show(context);
+      log.e("bad certificate", mqttTag);
     }
   }
 

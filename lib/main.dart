@@ -1,6 +1,9 @@
+import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:rhasspy_mobile_app/utils/logger/logger.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
 import 'package:rhasspy_mobile_app/screens/app_settings.dart';
@@ -9,9 +12,41 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'rhasspy_dart/rhasspy_mqtt_isolate.dart';
 
+const String appTag = "APP";
+const String mqttTag = "MQTT";
+const String rhasspyTag = "RHASSPY";
+
 RhasspyMqttIsolate rhasspyMqttIsolate;
+Logger log;
+void setupLogger() async {
+  MemoryLogOutput memoryOutput = MemoryLogOutput();
+  WidgetsFlutterBinding.ensureInitialized();
+  File logFile;
+  if (Platform.isAndroid) {
+    logFile = File((await getExternalStorageDirectory()).path + "/logs.txt");
+  } else {
+    logFile =
+        File((await getApplicationDocumentsDirectory()).path + "/logs.txt");
+  }
+  log = Logger(
+      logOutput: MultiOutput([
+    memoryOutput,
+    ConsoleOutput(printer: const SimplePrinter(includeStackTrace: false)),
+    FileOutput(
+      overrideExisting: true,
+      file: logFile,
+    )
+  ]));
+  FlutterError.onError = (FlutterErrorDetails details) {
+    if (!kReleaseMode) FlutterError.dumpErrorToConsole(details);
+    log.log(Level.error, details.toString(),
+        stackTrace: details.stack,
+        tag: details.exceptionAsString(),
+        includeTime: true);
+  };
+}
+
 Future<RhasspyMqttIsolate> setupMqtt() async {
-  print("setup mqtt..");
   if (rhasspyMqttIsolate != null) return rhasspyMqttIsolate;
   String certificatePath;
   WidgetsFlutterBinding.ensureInitialized();
@@ -21,6 +56,7 @@ Future<RhasspyMqttIsolate> setupMqtt() async {
     certificatePath = null;
   }
   SharedPreferences prefs = await SharedPreferences.getInstance();
+  log.d("Starting mqtt...", mqttTag);
   rhasspyMqttIsolate = RhasspyMqttIsolate(
     prefs.getString("MQTTHOST") ?? "",
     prefs.getInt("MQTTPORT") ?? 1883,
@@ -31,13 +67,22 @@ Future<RhasspyMqttIsolate> setupMqtt() async {
     pemFilePath: certificatePath,
   );
   if (prefs.containsKey("MQTT") && prefs.getBool("MQTT")) {
+    log.d("Connecting to mqtt...", mqttTag);
     rhasspyMqttIsolate.connect();
   }
   return rhasspyMqttIsolate;
 }
 
 void main() {
-  runApp(MyApp());
+  setupLogger();
+  runZonedGuarded<Future<void>>(() async {
+    runApp(MyApp());
+  }, (Object error, StackTrace stackTrace) {
+    log.log(Level.error, error.toString(),
+        stackTrace: stackTrace, includeTime: true);
+  }, zoneSpecification: ZoneSpecification(print: (self, parent, zone, message) {
+    parent.print(zone, message);
+  }));
 }
 
 class MyApp extends StatelessWidget {

@@ -38,7 +38,6 @@ public class MainActivity extends FlutterActivity {
                 && getIntent().hasCategory(Intent.CATEGORY_LAUNCHER)
                 && getIntent().getAction() != null
                 && getIntent().getAction().equals(Intent.ACTION_MAIN)) {
-
             finish();
         }
 

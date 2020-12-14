@@ -17,7 +17,8 @@
         android:icon="@mipmap/ic_launcher"
         android:allowBackup="false">
         <service
-            android:name=".WakeWordService" />
+            android:name=".WakeWordService"
+            android:foregroundServiceType="microphone"/>
         <activity
             android:name=".MainActivity"
             android:launchMode="singleInstance"
