@@ -1,6 +1,14 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'dart:typed_data';
+
+import 'package:flushbar/flushbar_helper.dart';
+import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:rhasspy_mobile_app/main.dart';
+import 'package:rhasspy_mobile_app/rhasspy_dart/rhasspy_api.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 Uint8List waveHeader(
     int totalAudioLen, int sampleRate, int channels, int byteRate) {
@@ -51,4 +59,54 @@ Uint8List waveHeader(
   header[42] = ((totalAudioLen >> 16) & 0xff);
   header[43] = ((totalAudioLen >> 24) & 0xff);
   return header;
+}
+
+Future<bool> applySettings(RhasspyApi rhasspy, RhasspyProfile profile) async {
+  if (!profile.isDialogueRhasspy) {
+    log.w("rhasspy Dialogue Management is not enable.");
+    profile.setDialogueSystem("rhasspy");
+  }
+  log.d("sending new profile config", "APP");
+  try {
+    if (await rhasspy.setProfile(ProfileLayers.defaults, profile)) {
+      log.i("Restarting rhasspy...", "RHASSPY");
+      if (await rhasspy.restart()) {
+        log.i("restarted", "RHASSPY");
+        return true;
+      } else {
+        log.e("failed to restarted rhasspy", "RHASSPY");
+        return false;
+      }
+    } else {
+      log.e("failed to send new profile", "RHASSPY");
+      return false;
+    }
+  } catch (e) {
+    log.e("failed to send new profile ${e.toString()}");
+    return false;
+  }
+}
+
+Future<RhasspyApi> getRhasspyInstance(SharedPreferences prefs,
+    [BuildContext context]) async {
+  SecurityContext securityContext = SecurityContext.defaultContext;
+  Directory appDocDirectory = await getApplicationDocumentsDirectory();
+  String certificatePath = appDocDirectory.path + "/SslCertificate.pem";
+  try {
+    if (File(certificatePath).existsSync())
+      securityContext.setTrustedCertificates(certificatePath);
+  } on TlsException {}
+  String value = prefs.getString("Rhasspyip");
+  if (value == null) {
+    if (context != null)
+      FlushbarHelper.createError(
+              message: "please insert rhasspy server ip first")
+          .show(context);
+    log.e("please insert rhasspy server ip first", "RHASSPY");
+    return null;
+  }
+  String ip = value.split(":").first;
+  int port = int.parse(value.split(":").last);
+  return RhasspyApi(ip, port, prefs.getBool("SSL") ?? false,
+      securityContext: securityContext);
 }

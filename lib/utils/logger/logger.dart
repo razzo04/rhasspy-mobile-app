@@ -114,7 +114,7 @@ class SimplePrinter implements LogPrinter {
         ? event.stackTrace.toString()
         : '';
     return [
-      '${levelPrefixes[event.logLevel]} $timeStr$messageStr$errorStr\n$stackStrace'
+      '${levelPrefixes[event.logLevel]} $timeStr $messageStr$errorStr\n$stackStrace'
     ];
   }
 

@@ -402,7 +402,7 @@ class RhasspyMqttApi {
 
   _onReceivedMessages(List<MqttReceivedMessage<MqttMessage>> messages) {
     var lastMessage = messages[0];
-    print("topic: ${lastMessage.topic}");
+    log.log("received topic: ${lastMessage.topic}", Level.debug);
     if (lastMessage.topic.contains("hermes/audioServer/$siteId/playBytes/")) {
       log.log("received audio", Level.debug);
       if (_isWaitForHandleIntent) {
@@ -521,6 +521,7 @@ class RhasspyMqttApi {
         // if the intent is to be managed
         if (intentParsed.sessionId != null && _intentNeedHandle) {
           _isWaitForHandleIntent = true;
+          log.log("Waiting for intent to be handle", Level.debug);
           Future.delayed(Duration(seconds: timeOutIntent), () {
             if (_intentHandled) {
               /// intent handled correctly
@@ -619,7 +620,7 @@ class RhasspyMqttApi {
   void _onConnected() {
     _lastPong = DateTime.now();
     if (!isConnected) return;
-    log.log("connected", Level.info);
+    log.log("connected", Level.debug);
     if (_keepAliveTimer != null && _keepAliveTimer.isActive)
       _keepAliveTimer.cancel();
     _keepAliveTimer =

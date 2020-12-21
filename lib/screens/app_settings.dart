@@ -1,5 +1,7 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math';
+import 'package:dio/dio.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flushbar/flushbar_helper.dart';
 import 'package:flutter/material.dart';
@@ -9,11 +11,13 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:rhasspy_mobile_app/rhasspy_dart/rhasspy_api.dart';
 import 'package:rhasspy_mobile_app/rhasspy_dart/rhasspy_mqtt_isolate.dart';
 import 'package:rhasspy_mobile_app/utils/logger/log_page.dart';
+import 'package:rhasspy_mobile_app/utils/utils.dart';
 import 'package:rhasspy_mobile_app/wake_word/udp_wake_word.dart';
 import 'package:rhasspy_mobile_app/wake_word/wake_word_utils.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:provider/provider.dart';
-import 'package:rhasspy_mobile_app/main.dart' show log, mqttTag;
+import 'package:rhasspy_mobile_app/main.dart' show log;
+import 'package:rhasspy_mobile_app/utils/constants.dart';
 
 class AppSettings extends StatefulWidget {
   static const String routeName = "/settings";
@@ -77,23 +81,12 @@ class _AppSettingsState extends State<AppSettings> {
                             rhasspyIpController.text = value;
                           });
                         }
-                        SecurityContext securityContext =
-                            SecurityContext.defaultContext;
-                        Directory appDocDirectory =
-                            await getApplicationDocumentsDirectory();
-                        String certificatePath =
-                            appDocDirectory.path + "/SslCertificate.pem";
-                        try {
-                          if (File(certificatePath).existsSync())
-                            securityContext
-                                .setTrustedCertificates(certificatePath);
-                        } on TlsException {}
-
-                        String ip = value.split(":").first;
-                        int port = int.parse(value.split(":").last);
-                        RhasspyApi rhasspy = RhasspyApi(
-                            ip, port, prefs.getBool("SSL"),
-                            securityContext: securityContext);
+                        setState(() {
+                          prefs.setString("Rhasspyip", value.trim());
+                        });
+                        RhasspyApi rhasspy =
+                            await getRhasspyInstance(prefs, context);
+                        if (rhasspy == null) return;
                         int result = await rhasspy.checkConnection();
                         if (result == 1) {
                           FlushbarHelper.createError(
@@ -113,9 +106,6 @@ class _AppSettingsState extends State<AppSettings> {
                           log.i(
                               "successful connection with rhasspy", "RHASSPY");
                         }
-                        setState(() {
-                          prefs.setString("Rhasspyip", value.trim());
-                        });
                       },
                       decoration: const InputDecoration(
                         hintText: "192.168.1.15:12101",
@@ -137,7 +127,7 @@ class _AppSettingsState extends State<AppSettings> {
                       subtitle: const Text(
                           "enable ssl to connect only in secure connections"),
                     ),
-                    FlatButton(
+                    TextButton(
                       onPressed: () async {
                         if (await Permission.storage.request().isGranted) {
                           var result = (await FilePicker.platform
@@ -174,6 +164,201 @@ class _AppSettingsState extends State<AppSettings> {
                             "You must add the certificate only if it has not been signed by a trusted CA",
                       ),
                     ),
+                    TextButton(
+                      style: ButtonStyle(),
+                      onPressed: () async {
+                        RhasspyApi rhasspy =
+                            await getRhasspyInstance(prefs, context);
+                        if (rhasspy == null) return;
+                        RhasspyProfile profile;
+                        try {
+                          profile = RhasspyProfile.fromJson(
+                              await rhasspy.getProfile(ProfileLayers.profile));
+                        } catch (e, stackTrace) {
+                          if (e is DioError) {
+                            if (e.error is HandshakeException ||
+                                e.error is TlsException) {
+                              log.e(
+                                  "TLS Exception try to check the certificate or ssl settings. Exception: ${e.toString()} ",
+                                  "RHASSPY",
+                                  stackTrace);
+                              FlushbarHelper.createError(
+                                      message:
+                                          "cannot connect with rhasspy TLS Exception")
+                                  .show(context);
+                              return;
+                            }
+                          }
+                          log.e("cannot connect with rhasspy. ${e.toString()}",
+                              "RHASSPY", stackTrace);
+                          FlushbarHelper.createError(
+                                  message: "cannot connect with rhasspy")
+                              .show(context);
+                        }
+                        if (profile == null) return;
+                        if (profile.isNewInstallation()) {
+                          log.w(
+                              "Detected a new rhasspy installation this auto-setup may fail");
+                        }
+                        if ((prefs.getString("SITEID") ?? "").isEmpty) {
+                          log.i("Generating random siteId", "APP");
+                          setState(() {
+                            prefs.setString("SITEID",
+                                "mobile-app" + Random().nextInt(9).toString());
+                          });
+                        }
+                        if ((prefs.getBool("MQTT") ?? false) &&
+                            (prefs.getString("MQTTHOST") != null &&
+                                prefs.getString("MQTTHOST") != "")) {
+                          if (profile.isMqttEnable) {
+                            if (profile.compareMqttSettings(
+                                prefs.getString("MQTTHOST"),
+                                prefs.getString("MQTTUSERNAME"),
+                                prefs.getString("MQTTPASSWORD"),
+                                prefs.getInt("MQTTPORT"))) {
+                              if (profile
+                                  .containsSiteId(prefs.getString("SITEID"))) {
+                                log.i(
+                                    "the siteId is already present in rhasspy",
+                                    "RHASSPY");
+                              } else {
+                                profile.addSiteId(prefs.getString("SITEID"));
+                              }
+                              if (await applySettings(rhasspy, profile)) {
+                                log.i("setup finished");
+                                FlushbarHelper.createSuccess(
+                                        message: "setup finished")
+                                    .show(context);
+                                return;
+                              } else {
+                                FlushbarHelper.createError(
+                                        message: "something went wrong")
+                                    .show(context);
+                                log.e(
+                                    "something went wrong check the previous log");
+                                return;
+                              }
+                            } else {
+                              log.w(
+                                  "mqtt settings in the app and in rhasspy are different please check if you entered them correctly",
+                                  "MQTT");
+                              FlushbarHelper.createError(
+                                      message:
+                                          "mqtt settings in the app and in rhasspy are different please check if you entered them correctly")
+                                  .show(context);
+                              return;
+                            }
+                          } else {
+                            log.i("no mqtt credentials on rhasspy");
+                            if (rhasspyMqtt == null) {
+                              rhasspyMqtt = context.read<RhasspyMqttIsolate>();
+                            }
+                            if (!(await rhasspyMqtt.isConnected)) {
+                              log.w(
+                                  "mqtt is not connected and there are no mqtt credentials on rhasspy.",
+                                  "RHASSPY");
+                              FlushbarHelper.createInformation(
+                                      message:
+                                          "mqtt is not connected and there are no mqtt credentials on rhasspy.")
+                                  .show(context);
+                              return;
+                            }
+                            bool sendCredentials = false;
+                            await showDialog(
+                                context: context,
+                                barrierDismissible: false,
+                                builder: (_) {
+                                  return AlertDialog(
+                                    title: const Text(
+                                        "Do you want to send mqtt credentials to rhasspy?"),
+                                    content: const Text(
+                                        "it has been found that on rhasspy there are no mqtt credentials but the app has them do you want to share them with rhasspy?"),
+                                    actions: [
+                                      TextButton(
+                                        child: const Text(
+                                          "yes",
+                                        ),
+                                        onPressed: () {
+                                          sendCredentials = true;
+                                          Navigator.of(context).pop();
+                                        },
+                                      ),
+                                      TextButton(
+                                        child: const Text(
+                                          "no",
+                                        ),
+                                        onPressed: () {
+                                          sendCredentials = false;
+                                          Navigator.of(context).pop();
+                                        },
+                                      )
+                                    ],
+                                  );
+                                });
+                            if (!sendCredentials) return;
+                            profile.mqttSettings.enabled = true;
+                            profile.mqttSettings.host =
+                                prefs.getString("MQTTHOST") ?? "";
+                            profile.mqttSettings.username =
+                                prefs.getString("MQTTUSERNAME") ?? "";
+                            profile.mqttSettings.password =
+                                prefs.getString("MQTTPASSWORD") ?? "";
+                            profile.mqttSettings.port =
+                                prefs.getInt("MQTTPORT") ?? 1883;
+                            profile.addSiteId(prefs.getString("SITEID"));
+                            if (await applySettings(rhasspy, profile)) {
+                              log.i("setup finished");
+                              FlushbarHelper.createSuccess(
+                                      message: "setup finished")
+                                  .show(context);
+                              return;
+                            } else {
+                              FlushbarHelper.createError(
+                                      message: "something went wrong")
+                                  .show(context);
+                              log.e(
+                                  "something went wrong check the previous log");
+                              return;
+                            }
+                          }
+                        } else {
+                          if (profile.isMqttEnable) {
+                            log.i("getting mqtt credentials", "APP");
+                            setState(() {
+                              prefs.setString(
+                                  "MQTTHOST", profile.mqttSettings.host);
+                              prefs.setString("MQTTUSERNAME",
+                                  profile.mqttSettings.username);
+                              prefs.setString("MQTTPASSWORD",
+                                  profile.mqttSettings.password);
+                              prefs.setInt(
+                                  "MQTTPORT", profile.mqttSettings.port);
+                              prefs.setBool("MQTT", true);
+                            });
+                            log.d(
+                                "check if is possible to make connection whit the new credential",
+                                "APP");
+                            if (await _checkConnection(prefs)) {
+                              log.i("new credentials correctly saved");
+                            } else {
+                              log.e(
+                                  "impossible establish a connection whit the new credential");
+                            }
+                            log.i("sending siteId", "RHASSPY");
+                            profile.addSiteId(prefs.getString("SITEID"));
+                            if (await applySettings(rhasspy, profile)) {
+                              log.i("setup finished");
+                              return;
+                            } else {
+                              log.e(
+                                  "something went wrong check the previous log");
+                              return;
+                            }
+                          }
+                        }
+                      },
+                      child: const Text("Auto-setup"),
+                    ),
                     const Divider(
                       thickness: 2,
                     ),
@@ -182,11 +367,13 @@ class _AppSettingsState extends State<AppSettings> {
                       thickness: 2,
                     ),
                     _buildWakeWordWidget(prefs),
-                    FlatButton.icon(
+                    TextButton.icon(
                       onPressed: () {
-                        showLicensePage(
-                          context: context,
-                        );
+                        showAboutDialog(
+                            applicationVersion: "1.7.0",
+                            context: context,
+                            applicationLegalese:
+                                "A simple mobile app for rhasspy.");
                       },
                       icon: const Icon(Icons.info_outline),
                       label: const Text("Information"),
@@ -232,7 +419,7 @@ class _AppSettingsState extends State<AppSettings> {
               ),
               Padding(
                 padding: const EdgeInsets.all(8.0),
-                child: FlatButton(
+                child: TextButton(
                     onPressed: () async {
                       if (_formWakeWordKey.currentState.validate()) {
                         _formWakeWordKey.currentState.save();
@@ -500,7 +687,7 @@ class _AppSettingsState extends State<AppSettings> {
               subtitle: const Text(
                   "When you click on the microphone will be sent a hotword detected so the session will be managed by an external Dialogue Manager."),
             ),
-            FlatButton(
+            TextButton(
               onPressed: () async {
                 if (await Permission.storage.request().isGranted) {
                   var result = (await FilePicker.platform
@@ -535,7 +722,7 @@ class _AppSettingsState extends State<AppSettings> {
                     "You must add the certificate only if it has not been signed by a trusted CA",
               ),
             ),
-            FlatButton.icon(
+            TextButton.icon(
               onPressed: () async {
                 if (_formKey.currentState.validate()) {
                   _formKey.currentState.save();
@@ -573,7 +760,7 @@ class _AppSettingsState extends State<AppSettings> {
     }
   }
 
-  Future _checkConnection(SharedPreferences prefs) async {
+  Future<bool> _checkConnection(SharedPreferences prefs) async {
     String certificatePath;
     if (prefs.getBool("MQTTSSL") ?? false) {
       Directory appDocDirectory = await getApplicationDocumentsDirectory();
@@ -581,6 +768,9 @@ class _AppSettingsState extends State<AppSettings> {
       if (!File(certificatePath).existsSync()) {
         certificatePath = null;
       }
+    }
+    if (rhasspyMqtt == null) {
+      rhasspyMqtt = context.read<RhasspyMqttIsolate>();
     }
     rhasspyMqtt.update(
         prefs.getString("MQTTHOST"),
@@ -598,20 +788,19 @@ class _AppSettingsState extends State<AppSettings> {
               message: "connection established with the broker")
           .show(context);
       log.i("connection established with the broker", mqttTag);
-    }
-    if (result == 1) {
+      return true;
+    } else if (result == 1) {
       FlushbarHelper.createError(message: "failed to connect").show(context);
       log.e("failed to connect", mqttTag);
-    }
-    if (result == 2) {
+    } else if (result == 2) {
       FlushbarHelper.createError(message: "incorrect credentials")
           .show(context);
       log.e("incorrect credentials", mqttTag);
-    }
-    if (result == 3) {
+    } else if (result == 3) {
       FlushbarHelper.createError(message: "bad certificate").show(context);
       log.e("bad certificate", mqttTag);
     }
+    return false;
   }
 
   @override

@@ -9,12 +9,8 @@ import 'package:provider/provider.dart';
 import 'package:rhasspy_mobile_app/screens/app_settings.dart';
 import 'package:rhasspy_mobile_app/screens/home_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-
+import 'package:rhasspy_mobile_app/utils/constants.dart';
 import 'rhasspy_dart/rhasspy_mqtt_isolate.dart';
-
-const String appTag = "APP";
-const String mqttTag = "MQTT";
-const String rhasspyTag = "RHASSPY";
 
 RhasspyMqttIsolate rhasspyMqttIsolate;
 Logger log;

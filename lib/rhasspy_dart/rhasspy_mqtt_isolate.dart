@@ -269,14 +269,14 @@ class RhasspyMqttIsolate {
           break;
         case "print":
           String messageToPrint = message["print"];
-          if (messageToPrint.startsWith("[D]")) {
-            log.d(messageToPrint.replaceFirst("[D]", ""), "MQTT");
-          } else if (messageToPrint.startsWith("[I]")) {
-            log.i(messageToPrint.replaceFirst("[I]", ""), "MQTT");
-          } else if (messageToPrint.startsWith("[E]")) {
-            log.e(messageToPrint.replaceFirst("[E]", ""), "MQTT");
-          } else if (messageToPrint.startsWith("[W]")) {
-            log.w(messageToPrint.replaceFirst("[W]", ""), "MQTT");
+          if (messageToPrint.startsWith("[D] ")) {
+            log.d(messageToPrint.replaceFirst("[D] ", ""), "MQTT");
+          } else if (messageToPrint.startsWith("[I] ")) {
+            log.i(messageToPrint.replaceFirst("[I] ", ""), "MQTT");
+          } else if (messageToPrint.startsWith("[E] ")) {
+            log.e(messageToPrint.replaceFirst("[E] ", ""), "MQTT");
+          } else if (messageToPrint.startsWith("[W] ")) {
+            log.w(messageToPrint.replaceFirst("[W] ", ""), "MQTT");
           }
           break;
         case "WakeWord":
