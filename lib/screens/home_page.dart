@@ -18,13 +18,15 @@ import 'package:rhasspy_mobile_app/rhasspy_dart/rhasspy_api.dart';
 import 'package:rhasspy_mobile_app/rhasspy_dart/rhasspy_mqtt_isolate.dart';
 import 'package:rhasspy_mobile_app/screens/app_settings.dart';
 import 'package:rhasspy_mobile_app/utils/audio_recorder_isolate.dart';
+import 'package:rhasspy_mobile_app/utils/constants.dart';
 import 'package:rhasspy_mobile_app/wake_word/wake_word_utils.dart';
 import 'package:rhasspy_mobile_app/widget/Intent_viewer.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class HomePage extends StatefulWidget {
   static const String routeName = "/";
-  HomePage({Key key}) : super(key: key);
+  final bool startRecording;
+  HomePage({Key key, this.startRecording = false}) : super(key: key);
   @override
   _HomePageState createState() => _HomePageState();
 }
@@ -39,8 +41,10 @@ class _HomePageState extends State<HomePage> {
   RhasspyMqttIsolate rhasspyMqtt;
   Completer<void> mqttReady = Completer();
   AudioPlayer audioPlayer = AudioPlayer();
-  MethodChannel _androidAppRetain = MethodChannel("rhasspy_mobile_app");
-  MethodChannel platform = MethodChannel('rhasspy_mobile_app/widget');
+  static const MethodChannel _androidAppRetain =
+      MethodChannel("rhasspy_mobile_app");
+  static const MethodChannel platform =
+      MethodChannel('rhasspy_mobile_app/widget');
   StreamController<Uint8List> audioStreamcontroller =
       StreamController<Uint8List>();
   Timer timerForAudio;
@@ -91,49 +95,7 @@ class _HomePageState extends State<HomePage> {
                   color: micColor,
                   icon: const Icon(Icons.mic),
                   onPressed: () async {
-                    HotwordDetected hotWord = HotwordDetected();
-                    hotWord.currentSensitivity = 1;
-                    hotWord.sendAudioCaptured = true;
-                    hotWord.modelType = "personal";
-                    if (((await _prefs).getBool("MQTT") ?? false) &&
-                        ((await _prefs).getBool("SILENCE") ?? false)) {
-                      if (await audioRecorderIsolate.isRecording) {
-                        _stopRecording();
-                        return;
-                      } else {
-                        if (((await _prefs).getBool("EDIALOGUEMANAGER") ??
-                                false) &&
-                            !rhasspyMqtt.isSessionManaged) {
-                          rhasspyMqtt.wake(hotWord, "mobile-app");
-                          log.d("sending hotWord", "DIALOGUE");
-                          return;
-                        }
-                        _startRecording();
-                        return;
-                      }
-                    }
-                    if (!((await _prefs).getBool("MQTT") ?? false) &&
-                        !(await _checkRhasspyIsReady())) {
-                      // if we have not set mqtt and we cannot
-                      // make a connection to rhasspy don't start recording
-                      return;
-                    }
-                    if (recorder != null)
-                      statusRecording = (await recorder.current()).status;
-                    if (statusRecording == RecordingStatus.Unset ||
-                        statusRecording == RecordingStatus.Stopped) {
-                      //TODO Clean
-                      if (((await _prefs).getBool("EDIALOGUEMANAGER") ??
-                              false) &&
-                          !rhasspyMqtt.isSessionManaged) {
-                        log.d("sending hotWord", "DIALOGUE");
-                        rhasspyMqtt.wake(hotWord, "mobile-app");
-                        return;
-                      }
-                      _startRecording();
-                    } else {
-                      _stopRecording();
-                    }
+                    _onPressedMic();
                   },
                   iconSize: MediaQuery.of(context).size.width / 1.7,
                 ),
@@ -495,10 +457,20 @@ class _HomePageState extends State<HomePage> {
 
   @override
   void initState() {
+    super.initState();
     platform.setMethodCallHandler((call) async {
       if (call.method == "StartRecording") {
         // called when you press on the android widget
-        _startRecording();
+        if (rhasspyMqtt == null && !mqttReady.isCompleted) {
+          await mqttReady.future;
+          if (await rhasspyMqtt.connected) {
+            log.d("StartRecording from android", appTag);
+            _onPressedMic();
+          }
+        } else {
+          log.d("StartRecording from android", appTag);
+          _onPressedMic();
+        }
         return true;
       }
       return null;
@@ -506,7 +478,55 @@ class _HomePageState extends State<HomePage> {
     _setupMqtt();
     _setup();
     _setupNotification();
-    super.initState();
+    mqttReady.future.then((_) {
+      if (widget.startRecording) {
+        rhasspyMqtt.connected.then((isConnected) {
+          if (isConnected) _startRecording();
+        });
+      }
+    });
+  }
+
+  void _onPressedMic() async {
+    HotwordDetected hotWord = HotwordDetected();
+    hotWord.currentSensitivity = 1;
+    hotWord.sendAudioCaptured = true;
+    hotWord.modelType = "personal";
+    if (((await _prefs).getBool("MQTT") ?? false) &&
+        ((await _prefs).getBool("SILENCE") ?? false)) {
+      if (await audioRecorderIsolate.isRecording) {
+        _stopRecording();
+        return;
+      } else {
+        if (((await _prefs).getBool("EDIALOGUEMANAGER") ?? false) &&
+            !rhasspyMqtt.isSessionManaged) {
+          rhasspyMqtt.wake(hotWord, "mobile-app");
+          log.d("sending hotWord", "DIALOGUE");
+          return;
+        }
+        _startRecording();
+        return;
+      }
+    }
+    if (!((await _prefs).getBool("MQTT") ?? false) &&
+        !(await _checkRhasspyIsReady())) {
+      // if we have not set mqtt and we cannot
+      // make a connection to rhasspy don't start recording
+      return;
+    }
+    if (recorder != null) statusRecording = (await recorder.current()).status;
+    if (statusRecording == RecordingStatus.Unset ||
+        statusRecording == RecordingStatus.Stopped) {
+      if (((await _prefs).getBool("EDIALOGUEMANAGER") ?? false) &&
+          !rhasspyMqtt.isSessionManaged) {
+        log.d("sending hotWord", "DIALOGUE");
+        rhasspyMqtt.wake(hotWord, "mobile-app");
+        return;
+      }
+      _startRecording();
+    } else {
+      _stopRecording();
+    }
   }
 
   void _setupNotification() {
@@ -547,32 +567,31 @@ class _HomePageState extends State<HomePage> {
     super.dispose();
   }
 
-  void _setupMqtt() async {
-    _prefs.then((SharedPreferences prefs) async {
-      if (prefs.getBool("MQTT") != null && prefs.getBool("MQTT")) {
-        if (audioStreamcontroller.hasListener) {
-          audioStreamcontroller.close();
-          audioStreamcontroller = StreamController<Uint8List>();
+  Future<void> _setupMqtt() async {
+    SharedPreferences prefs = await _prefs;
+    if (prefs.getBool("MQTT") != null && prefs.getBool("MQTT")) {
+      if (audioStreamcontroller.hasListener) {
+        audioStreamcontroller.close();
+        audioStreamcontroller = StreamController<Uint8List>();
+      }
+    }
+    //TODO try to optimize
+    rhasspyMqtt = context.read<RhasspyMqttIsolate>();
+    if (rhasspyMqtt == null) {
+      Timer.periodic(Duration(milliseconds: 1), (timer) {
+        rhasspyMqtt = context.read<RhasspyMqttIsolate>();
+        if (rhasspyMqtt != null) {
+          _subscribeMqtt(prefs);
+          mqttReady.complete();
+          mqttReady = Completer();
+          timer.cancel();
         }
-      }
-      //TODO try to optimize
-      rhasspyMqtt = context.read<RhasspyMqttIsolate>();
-      if (rhasspyMqtt == null) {
-        Timer.periodic(Duration(milliseconds: 1), (timer) {
-          rhasspyMqtt = context.read<RhasspyMqttIsolate>();
-          if (rhasspyMqtt != null) {
-            _subscribeMqtt(prefs);
-            mqttReady.complete();
-            mqttReady = Completer();
-            timer.cancel();
-          }
-        });
-      } else {
-        _subscribeMqtt(prefs);
-        mqttReady.complete();
-        mqttReady = Completer();
-      }
-    });
+      });
+    } else {
+      _subscribeMqtt(prefs);
+      mqttReady.complete();
+      mqttReady = Completer();
+    }
   }
 
   void _subscribeMqtt(SharedPreferences prefs) async {

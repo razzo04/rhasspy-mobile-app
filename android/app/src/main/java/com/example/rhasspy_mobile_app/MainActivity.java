@@ -5,6 +5,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.ServiceConnection;
 import android.os.Bundle;
+import android.os.Handler;
 import android.os.IBinder;
 import android.os.PersistableBundle;
 import android.util.Log;
@@ -17,9 +18,11 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 
+import io.flutter.FlutterInjector;
 import io.flutter.embedding.android.FlutterActivity;
 import io.flutter.embedding.engine.FlutterEngine;
 import io.flutter.embedding.engine.dart.DartExecutor;
+import io.flutter.embedding.engine.loader.FlutterLoader;
 import io.flutter.plugin.common.MethodChannel;
 import io.flutter.view.FlutterMain;
 
@@ -27,7 +30,7 @@ public class MainActivity extends FlutterActivity {
     WakeWordService mService;
     private static final String CHANNEL = "rhasspy_mobile_app/widget";
     boolean mBound;
-    private MethodChannel channel = null;
+    private MethodChannel channel;
     public MethodChannel channel2;
     public  MethodChannel wakeWordChannel;
 
@@ -46,15 +49,17 @@ public class MainActivity extends FlutterActivity {
 
     @Override
     public void configureFlutterEngine(@NonNull FlutterEngine flutterEngine) {
+        super.configureFlutterEngine(flutterEngine);
+        channel = new MethodChannel(flutterEngine.getDartExecutor(), CHANNEL);
         Bundle extras = getIntent().getExtras();
-        channel = getMethodChannel(flutterEngine);
         if(extras != null && extras.containsKey("StartRecording"))  {
-            channel.invokeMethod("StartRecording","test");
-            Log.i("Home", extras.getString("StartRecording"));
+            Log.i("Home","Starting recording");
+            DartExecutor.DartEntrypoint entryPoint = new DartExecutor.DartEntrypoint(FlutterInjector.instance().flutterLoader().findAppBundlePath(),"main");
+            flutterEngine.getDartExecutor().executeDartEntrypoint(entryPoint);
+            channel.invokeMethod("StartRecording", null);
 
         }
 
-        super.configureFlutterEngine(flutterEngine);
          channel2 =new MethodChannel(flutterEngine.getDartExecutor().getBinaryMessenger(), "rhasspy_mobile_app");
         channel2.setMethodCallHandler((call, result) -> {
             if(call.method.equals("sendToBackground")){
@@ -142,37 +147,18 @@ public class MainActivity extends FlutterActivity {
         Log.i("Home", "NewIntent");
         if(intent.getExtras() != null) {
             if (Objects.requireNonNull(intent.getExtras()).containsKey("StartRecording")) {
-                Log.i("Home", intent.getExtras().getString("StartRecording"));
-                if (channel == null) {
-                    channel = getMethodChannel(null);
-                }
-                channel.invokeMethod("StartRecording", "");
+                Log.i("Home", "StartRecording");
+                channel.invokeMethod("StartRecording", null);
             }
         }
 
 
-    }
-
-    private MethodChannel getMethodChannel(FlutterEngine engine) {
-        Context context = getApplicationContext();
-        FlutterMain.startInitialization(context);
-        FlutterMain.ensureInitializationComplete(context, new String[]{""});
-
-
-        // Instantiate a FlutterEngine.
-        if(engine == null){
-            engine = new FlutterEngine(context);
-        }
-        DartExecutor.DartEntrypoint entryPoint = new DartExecutor.DartEntrypoint(FlutterMain.findAppBundlePath(),"");
-        engine.getDartExecutor().executeDartEntrypoint(entryPoint);
-        return new MethodChannel(engine.getDartExecutor().getBinaryMessenger(), CHANNEL);
     }
     private ServiceConnection connection = new ServiceConnection() {
 
         @Override
         public void onServiceConnected(ComponentName className,
                                        IBinder service) {
-            // We've bound to LocalService, cast the IBinder and get LocalService instance
             WakeWordService.LocalBinder binder = (WakeWordService.LocalBinder) service;
             mService = binder.getService();
             mBound = true;
@@ -186,7 +172,7 @@ public class MainActivity extends FlutterActivity {
 
     @Override
     protected void onDestroy() {
-        unbindService(connection);
+        if(mBound || mService != null) unbindService(connection);
         super.onDestroy();
 
     }

@@ -19,7 +19,14 @@ class RhasspyMqttIsolate {
   bool autoRestart = true;
   Stream<Uint8List> audioStream;
   Completer<bool> _isConnectedCompleter = Completer<bool>();
-  Future<bool> get isConnected {
+  Future<bool> get isConnected async {
+    if (_sendPort == null) {
+      print("Starting to wait");
+      print(_isolateReady.isCompleted);
+      await isReady;
+      print("finished to wait");
+    }
+
     _sendPort.send("isConnected");
     return _isConnectedCompleter.future;
   }
