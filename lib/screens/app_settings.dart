@@ -370,7 +370,7 @@ class _AppSettingsState extends State<AppSettings> {
                     TextButton.icon(
                       onPressed: () {
                         showAboutDialog(
-                            applicationVersion: "1.7.0",
+                            applicationVersion: applicationVersion,
                             context: context,
                             applicationLegalese:
                                 "A simple mobile app for rhasspy.");

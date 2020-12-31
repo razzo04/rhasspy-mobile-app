@@ -57,7 +57,6 @@ public class MainActivity extends FlutterActivity {
             DartExecutor.DartEntrypoint entryPoint = new DartExecutor.DartEntrypoint(FlutterInjector.instance().flutterLoader().findAppBundlePath(),"main");
             flutterEngine.getDartExecutor().executeDartEntrypoint(entryPoint);
             channel.invokeMethod("StartRecording", null);
-
         }
 
          channel2 =new MethodChannel(flutterEngine.getDartExecutor().getBinaryMessenger(), "rhasspy_mobile_app");
