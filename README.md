@@ -2,10 +2,12 @@
 
 This is a simple mobile app that interfaces with rhasspy. 
 
-<img src="Screenshot_homepage.jpg" width="200" style="display: block;
+<img src="https://user-images.githubusercontent.com/53791253/103412557-f6466f00-4b75-11eb-8bb2-313d4ddbed61.png" width="240" style="display: block;
   margin-left: auto;
-  margin-right: auto;
-  width: 50%;"/>
+  margin-right: auto;"/>
+  <img src="https://user-images.githubusercontent.com/53791253/103412110-ea59ad80-4b73-11eb-83d6-d909e7d631ec.gif" width="240" style="display: block;
+  margin-left: auto;
+  margin-right: auto;"/>
 # Features
   - Text to speak
   - Speech to text
@@ -16,11 +18,9 @@ This is a simple mobile app that interfaces with rhasspy.
   - Android widget for listen to a command
 
 # Getting Started
-
 For android you can install the app by downloading the file with extension .apk and then open it in your phone after accepting the installation from unknown sources. It is not yet available for ios. 
-## Configuration 
-For the app to function it needs to be configured, you can choose to use HTTP or MQTT. To use HTTP you have to enter in the text field called "Rhasspy ip" in the settings page the IP address and the port where rhasspy is running and if necessary you can enable the ssl and add the self-signed certificate. In this way, you can recognize an intent from the spoken audio but the big limitation is that you can't hear the response send by rhasspy so this should be only used for tests. To hear the answer you need to configure MQTT by entering the host and port where the MQTT broker runs, credentials, and finally the siteId. [Like you would have done for a satellite](https://rhasspy.readthedocs.io/en/latest/tutorials/#shared-mqtt-broker). To check that the connection to the broker has been made correctly, click the check connection button. In this way, the app will make requests through MQTT so you can listen to the spoken text inside endSession or continueSession messages.
 
+Once the app has been installed, it needs to be configured from version 1.7.0, the configuration of the app has been greatly simplified it is sufficient to insert in the text field called "Rhasspy ip" the ip and the port where rhasspy is running. If you are using the default port it will only be necessary to enter the ip. Once the entry is confirmed, a message should appear indicating whether a connection to rhasspy has occurred. If not, check the SSL settings and the logs which may contain useful information to understand the nature of the problem. Once you have made a connection to rhasspy you can click the auto setup button this will take care of generating a siteId if not specified and taking the MQTT credentials and adding the siteId to the various services so that the app can work. If the procedure does not work, check the logs and open an issue if necessary. If rhasspy does not have MQTT credentials, the app will check if it has them and if so it will send them and complete the setup procedure.
 
 # Building From Source
 To get started you need to install [flutter](https://flutter.dev/docs/get-started/install) and then you can download the repository.  
