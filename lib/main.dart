@@ -103,6 +103,10 @@ class MyApp extends StatelessWidget {
                 builder: (context) => screen, settings: settings);
           },
           theme: ThemeData(
+            textTheme: Theme.of(context).textTheme.apply(
+                  fontSizeFactor: 0.65,
+                ),
+            iconTheme: Theme.of(context).iconTheme.copyWith(size: 8),
             primarySwatch: Colors.blue,
             visualDensity: VisualDensity.adaptivePlatformDensity,
           ),

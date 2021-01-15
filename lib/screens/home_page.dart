@@ -70,178 +70,202 @@ class _HomePageState extends State<HomePage> {
           return true;
         }
       },
-      child: Scaffold(
-        appBar: AppBar(
-          title: const Text("Rhasspy mobile app"),
-          actions: <Widget>[
-            IconButton(
-              icon: const Icon(Icons.settings),
-              onPressed: () {
-                Navigator.pushNamed(context, AppSettings.routeName)
-                    .then((value) {
-                  _setupMqtt();
-                  _setup();
-                });
-              },
-            )
-          ],
-        ),
-        body: SingleChildScrollView(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: <Widget>[
-              Center(
-                child: IconButton(
-                  color: micColor,
-                  icon: const Icon(Icons.mic),
-                  onPressed: () async {
-                    _onPressedMic();
-                  },
-                  iconSize: MediaQuery.of(context).size.width / 1.7,
-                ),
-              ),
-              Row(
+      child: GestureDetector(
+        onHorizontalDragUpdate: (details) {
+          print(details.delta.dx);
+          if (details.delta.dx < 0) {
+            // left Swipe
+            Navigator.pushNamed(context, AppSettings.routeName).then((value) {
+              _setupMqtt();
+              _setup();
+            });
+          }
+        },
+        child: SafeArea(
+          child: Scaffold(
+            // appBar: AppBar(
+            //   automaticallyImplyLeading: false,
+            //   titleSpacing: 0.0,
+            //   iconTheme: IconThemeData(size: 5),
+            //   title: const Text(
+            //     "Rhasspy mobile app",
+            //     style: TextStyle(fontSize: 5),
+            //   ),
+            //   actions: <Widget>[
+            //     IconButton(
+            //       padding: EdgeInsets.zero,
+            //       icon: const Icon(Icons.settings),
+            //       onPressed: () {
+            //         Navigator.pushNamed(context, AppSettings.routeName)
+            //             .then((value) {
+            //           _setupMqtt();
+            //           _setup();
+            //         });
+            //       },
+            //     )
+            //   ],
+            // ),
+            body: SingleChildScrollView(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
                 children: <Widget>[
-                  Expanded(
-                    child: TextField(
-                      maxLines: 3,
-                      controller: textEditingController,
-                      decoration: const InputDecoration(
-                        labelText: "Speech to text or text to speech",
-                        hintText:
-                            "If you click on the microphone here the spoken text will appear if you write the text and click send will be pronounced",
-                        border: const OutlineInputBorder(
-                          borderSide: const BorderSide(width: 1),
-                          borderRadius: const BorderRadius.all(
-                            Radius.circular(20),
+                  Center(
+                    child: IconButton(
+                      color: micColor,
+                      icon: const Icon(Icons.mic),
+                      onPressed: () async {
+                        _onPressedMic();
+                      },
+                      iconSize: MediaQuery.of(context).size.width / 1.7,
+                    ),
+                  ),
+                  Row(
+                    children: <Widget>[
+                      Expanded(
+                        child: TextField(
+                          // maxLines: 3,
+                          controller: textEditingController,
+                          decoration: const InputDecoration(
+                            labelText: "Speech to text or text to speech",
+                            hintText:
+                                "If you click on the microphone here the spoken text will appear if you write the text and click send will be pronounced",
+                            border: const OutlineInputBorder(
+                              borderSide: const BorderSide(width: 1),
+                              borderRadius: const BorderRadius.all(
+                                Radius.circular(20),
+                              ),
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                  ),
-                  IconButton(
-                      icon: const Icon(Icons.send),
-                      onPressed: () async {
-                        log.d("Sending text: ${textEditingController.text}",
-                            "APP");
-                        if (!((await _prefs).getBool("MQTT") ?? false)) {
-                          if (!await _checkRhasspyIsReady()) {
-                            // if we have not set mqtt and we cannot
-                            // make a connection to rhasspy do not send text
-                            return;
-                          }
-                          Uint8List audioData = await rhasspy
-                              .textToSpeech(textEditingController.text);
-                          if (handle) {
-                            rhasspy
-                                .textToIntent(textEditingController.text)
-                                .then((value) {
-                              setState(() {
-                                intent = value;
-                              });
-                            });
-                          }
-                          String filePath =
-                              (await getApplicationDocumentsDirectory()).path +
-                                  "text_to_speech.wav";
-                          File file = File(filePath);
-                          file.writeAsBytesSync(audioData);
-                          audioPlayer.play(file.path,
-                              isLocal: true, volume: volume);
-                        } else {
-                          if (!(await _checkMqtt(context))) {
-                            return;
-                          }
-                          if (handle) {
-                            rhasspyMqtt
-                                .textToIntent(textEditingController.text);
-                          } else {
-                            rhasspyMqtt
-                                .textToSpeech(textEditingController.text);
-                          }
-                        }
-                      })
-                ],
-              ),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: <Widget>[
-                  FlatButton(
-                      onPressed: () async {
-                        if (await Permission.storage.request().isGranted) {
-                          var result = await FilePicker.platform
-                              .pickFiles(type: FileType.audio);
-                          if (result?.files != null &&
-                              result.files.isNotEmpty) {
+                      IconButton(
+                          icon: const Icon(Icons.send),
+                          onPressed: () async {
+                            log.d("Sending text: ${textEditingController.text}",
+                                "APP");
                             if (!((await _prefs).getBool("MQTT") ?? false)) {
                               if (!await _checkRhasspyIsReady()) {
+                                // if we have not set mqtt and we cannot
+                                // make a connection to rhasspy do not send text
                                 return;
                               }
-                              rhasspy
-                                  .speechToText(File(result.files.first.path))
-                                  .then((value) {
-                                setState(
-                                  () {
-                                    textEditingController.value =
-                                        TextEditingValue(text: value);
-                                  },
-                                );
-                                if (handle) {
-                                  rhasspy.textToIntent(value).then((value) {
-                                    setState(() {
-                                      intent = value;
-                                    });
+                              Uint8List audioData = await rhasspy
+                                  .textToSpeech(textEditingController.text);
+                              if (handle) {
+                                rhasspy
+                                    .textToIntent(textEditingController.text)
+                                    .then((value) {
+                                  setState(() {
+                                    intent = value;
                                   });
-                                }
-                              });
+                                });
+                              }
+                              String filePath =
+                                  (await getApplicationDocumentsDirectory())
+                                          .path +
+                                      "text_to_speech.wav";
+                              File file = File(filePath);
+                              file.writeAsBytesSync(audioData);
+                              audioPlayer.play(file.path,
+                                  isLocal: true, volume: volume);
                             } else {
                               if (!(await _checkMqtt(context))) {
                                 return;
                               }
-                              rhasspyMqtt.speechTotext(
-                                  File(result.files.first.path)
-                                      .readAsBytesSync());
+                              if (handle) {
+                                rhasspyMqtt
+                                    .textToIntent(textEditingController.text);
+                              } else {
+                                rhasspyMqtt
+                                    .textToSpeech(textEditingController.text);
+                              }
                             }
-                          }
-                        }
-                      },
-                      child: const Text("Select an audio")),
-                  Row(
-                    children: <Widget>[
-                      const Text("Handle? "),
-                      Checkbox(
-                          value: handle,
-                          onChanged: (bool value) {
-                            setState(() {
-                              handle = value;
-                            });
-                          }),
+                          })
                     ],
-                  )
+                  ),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: <Widget>[
+                      FlatButton(
+                          onPressed: () async {
+                            if (await Permission.storage.request().isGranted) {
+                              var result = await FilePicker.platform
+                                  .pickFiles(type: FileType.audio);
+                              if (result?.files != null &&
+                                  result.files.isNotEmpty) {
+                                if (!((await _prefs).getBool("MQTT") ??
+                                    false)) {
+                                  if (!await _checkRhasspyIsReady()) {
+                                    return;
+                                  }
+                                  rhasspy
+                                      .speechToText(
+                                          File(result.files.first.path))
+                                      .then((value) {
+                                    setState(
+                                      () {
+                                        textEditingController.value =
+                                            TextEditingValue(text: value);
+                                      },
+                                    );
+                                    if (handle) {
+                                      rhasspy.textToIntent(value).then((value) {
+                                        setState(() {
+                                          intent = value;
+                                        });
+                                      });
+                                    }
+                                  });
+                                } else {
+                                  if (!(await _checkMqtt(context))) {
+                                    return;
+                                  }
+                                  rhasspyMqtt.speechTotext(
+                                      File(result.files.first.path)
+                                          .readAsBytesSync());
+                                }
+                              }
+                            }
+                          },
+                          child: const Text("Select an audio")),
+                      Row(
+                        children: <Widget>[
+                          const Text("Handle? "),
+                          Checkbox(
+                              value: handle,
+                              onChanged: (bool value) {
+                                setState(() {
+                                  handle = value;
+                                });
+                              }),
+                        ],
+                      )
+                    ],
+                  ),
+                  FlatButton.icon(
+                    onPressed: () async {
+                      Directory appDocDirectory =
+                          await getApplicationDocumentsDirectory();
+                      String pathFile =
+                          appDocDirectory.path + "/speech_to_text.wav";
+                      File audioFile = File(pathFile);
+                      if (audioFile.existsSync()) {
+                        audioPlayer.play(audioFile.path,
+                            isLocal: true, volume: volume);
+                      } else {
+                        FlushbarHelper.createError(
+                                message: "Record a message before playing it")
+                            .show(context);
+                        log.e("Record a message before playing it", "APP");
+                      }
+                    },
+                    icon: const Icon(Icons.play_arrow),
+                    label: const Text("Play last voice command"),
+                  ),
+                  IntentViewer(intent),
                 ],
               ),
-              FlatButton.icon(
-                onPressed: () async {
-                  Directory appDocDirectory =
-                      await getApplicationDocumentsDirectory();
-                  String pathFile =
-                      appDocDirectory.path + "/speech_to_text.wav";
-                  File audioFile = File(pathFile);
-                  if (audioFile.existsSync()) {
-                    audioPlayer.play(audioFile.path,
-                        isLocal: true, volume: volume);
-                  } else {
-                    FlushbarHelper.createError(
-                            message: "Record a message before playing it")
-                        .show(context);
-                    log.e("Record a message before playing it", "APP");
-                  }
-                },
-                icon: const Icon(Icons.play_arrow),
-                label: const Text("Play last voice command"),
-              ),
-              IntentViewer(intent),
-            ],
+            ),
           ),
         ),
       ),
