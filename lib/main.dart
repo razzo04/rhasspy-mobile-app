@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:rhasspy_mobile_app/screens/page_view_screen.dart';
 import 'package:rhasspy_mobile_app/utils/logger/logger.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
@@ -110,7 +111,7 @@ class MyApp extends StatelessWidget {
             primarySwatch: Colors.blue,
             visualDensity: VisualDensity.adaptivePlatformDensity,
           ),
-          home: HomePage()),
+          home: PageViewScreen()),
       lazy: false,
     );
   }
