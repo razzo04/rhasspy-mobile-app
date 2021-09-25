@@ -22,6 +22,7 @@ import 'package:rhasspy_mobile_app/utils/constants.dart';
 import 'package:rhasspy_mobile_app/wake_word/wake_word_utils.dart';
 import 'package:rhasspy_mobile_app/widget/Intent_viewer.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:vibration/vibration.dart';
 
 class HomePage extends StatefulWidget {
   static const String routeName = "/";
@@ -54,6 +55,7 @@ class _HomePageState extends State<HomePage> {
   FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin;
   bool _hotwordDetected = false;
   double volume = 1;
+  bool hasVibrator = false;
 
   @override
   Widget build(BuildContext context) {
@@ -317,6 +319,14 @@ class _HomePageState extends State<HomePage> {
     });
     statusRecording = result.status;
 
+    // This is here instead of the stopRecording
+    // callback because it needs to trigger before
+    // the STT response, but not before it the
+    // microphone actually stops recording
+    if (_hotwordDetected && hasVibrator) {
+      Vibration.vibrate(duration: 250);
+    }
+
     if (!((await _prefs).getBool("MQTT") ?? false)) {
       String text = await rhasspy.speechToText(File(result.path));
       if (handle) {
@@ -478,12 +488,21 @@ class _HomePageState extends State<HomePage> {
     _setupMqtt();
     _setup();
     _setupNotification();
+
     mqttReady.future.then((_) {
       if (widget.startRecording) {
         rhasspyMqtt.connected.then((isConnected) {
           if (isConnected) _startRecording();
         });
       }
+    });
+
+    // Asynchronously check vibration cababilities
+    // to minimize delay when the vibrate function is called.
+    Vibration.hasVibrator().then((value) {
+      setState(() {
+        hasVibrator = value;
+      });
     });
   }
 
@@ -682,9 +701,12 @@ class _HomePageState extends State<HomePage> {
             _showNotification("Notification", startSession.init.text);
           }
         },
-        onHotwordDetected: (HotwordDetected hotwordDetected) {
+        onHotwordDetected: (HotwordDetected hotwordDetected) async {
           log.d("HotWord Detected ${hotwordDetected.modelId}", "DIALOGUE");
           _hotwordDetected = true;
+          if (hasVibrator) {
+            Vibration.vibrate(duration: 250);
+          }
         },
         onSetVolume: (volumeToSet) {
           volume = volumeToSet;
