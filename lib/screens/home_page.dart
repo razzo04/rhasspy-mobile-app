@@ -319,14 +319,6 @@ class _HomePageState extends State<HomePage> {
     });
     statusRecording = result.status;
 
-    // This is here instead of the stopRecording
-    // callback because it needs to trigger before
-    // the STT response, but not before it the
-    // microphone actually stops recording
-    if (_hotwordDetected && hasVibrator) {
-      Vibration.vibrate(duration: 250);
-    }
-
     if (!((await _prefs).getBool("MQTT") ?? false)) {
       String text = await rhasspy.speechToText(File(result.path));
       if (handle) {
