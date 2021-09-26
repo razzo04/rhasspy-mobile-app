@@ -11,6 +11,7 @@ import 'package:rhasspy_mobile_app/screens/home_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:rhasspy_mobile_app/utils/constants.dart';
 import 'rhasspy_dart/rhasspy_mqtt_isolate.dart';
+import 'utils/utils.dart';
 
 RhasspyMqttIsolate rhasspyMqttIsolate;
 Logger log;
@@ -103,7 +104,7 @@ class MyApp extends StatelessWidget {
                 builder: (context) => screen, settings: settings);
           },
           theme: ThemeData(
-            primarySwatch: Colors.blue,
+            primarySwatch: createMaterialColor(Color.fromARGB(255, 52, 58, 64)),
             visualDensity: VisualDensity.adaptivePlatformDensity,
           ),
           home: HomePage()),
