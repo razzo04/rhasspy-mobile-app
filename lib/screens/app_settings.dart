@@ -126,7 +126,7 @@ class _AppSettingsState extends State<AppSettings> {
                       },
                       title: const Text("Enable SSL"),
                       subtitle: const Text(
-                        "Enable ssl to connect only in secure connections",
+                        "Enable SSL connections",
                       ),
                     ),
                     SwitchListTile.adaptive(
@@ -545,6 +545,8 @@ class _AppSettingsState extends State<AppSettings> {
                   if (value.isEmpty) {
                     return "the field cannot be empty";
                   }
+
+                  return null;
                 },
               ),
             ),
@@ -566,6 +568,8 @@ class _AppSettingsState extends State<AppSettings> {
                   if (value.isEmpty) {
                     return "the field cannot be empty";
                   }
+
+                  return null;
                 },
                 onFieldSubmitted: (value) {
                   prefs.setInt("MQTTPORT", int.parse(value));
@@ -589,6 +593,8 @@ class _AppSettingsState extends State<AppSettings> {
                   if (value.isEmpty) {
                     return "the field cannot be empty";
                   }
+
+                  return null;
                 },
                 decoration: const InputDecoration(
                   labelText: "Username",
@@ -610,6 +616,8 @@ class _AppSettingsState extends State<AppSettings> {
                         if (value.isEmpty) {
                           return "the field cannot be empty";
                         }
+
+                        return null;
                       },
                       onFieldSubmitted: (value) {
                         prefs.setString("MQTTPASSWORD", value.trim());
@@ -640,12 +648,14 @@ class _AppSettingsState extends State<AppSettings> {
                   if (value.isEmpty) {
                     return "the field cannot be empty";
                   }
+
+                  return null;
                 },
                 onFieldSubmitted: (value) {
                   prefs.setString("SITEID", value.trim());
                 },
                 decoration: const InputDecoration(
-                  labelText: "Siteid",
+                  labelText: "Site ID",
                 ),
               ),
             ),
@@ -657,8 +667,8 @@ class _AppSettingsState extends State<AppSettings> {
                 });
               },
               title: const Text("Silence Detection"),
-              subtitle:
-                  const Text("auto stop listening when silence is detected"),
+              subtitle: const Text(
+                  "Automatically stop listening when silence is detected"),
             ),
             SwitchListTile.adaptive(
               value: prefs.getBool("MQTTSSL") ?? false,
@@ -668,7 +678,7 @@ class _AppSettingsState extends State<AppSettings> {
                 });
               },
               title: const Text("Enable SSL"),
-              subtitle: const Text("enable secure connections for mqtt"),
+              subtitle: const Text("Enable SSL/TLS connections for mqtt"),
             ),
             SwitchListTile.adaptive(
               value: prefs.getBool("NOTIFICATION") ?? false,
@@ -677,9 +687,9 @@ class _AppSettingsState extends State<AppSettings> {
                   prefs.setBool("NOTIFICATION", value);
                 });
               },
-              title: const Text("Enable notification"),
+              title: const Text("Enable Notifications"),
               subtitle: const Text(
-                  "when a notification start session arrives a notification will be sent"),
+                  "When a notification start session arrives a notification will be sent"),
             ),
             SwitchListTile.adaptive(
               value: prefs.getBool("EDIALOGUEMANAGER") ?? false,
@@ -688,9 +698,9 @@ class _AppSettingsState extends State<AppSettings> {
                   prefs.setBool("EDIALOGUEMANAGER", value);
                 });
               },
-              title: const Text("Use external Dialogue Manager"),
+              title: const Text("Use External Dialogue Manager"),
               subtitle: const Text(
-                  "When you click on the microphone will be sent a hotword detected so the session will be managed by an external Dialogue Manager."),
+                  "When a voice command is issued it will be managed by an External Dialogue Manager"),
             ),
             TextButton(
               onPressed: () async {
