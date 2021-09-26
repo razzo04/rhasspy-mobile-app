@@ -37,7 +37,7 @@ class _HomePageState extends State<HomePage> {
   FlutterAudioRecorder recorder;
   TextEditingController textEditingController = TextEditingController();
   Color micColor;
-  bool textToSpeech = true;
+  bool textToSpeech = false;
   RhasspyApi rhasspy;
   RhasspyMqttIsolate rhasspyMqtt;
   Completer<void> mqttReady = Completer();
@@ -59,157 +59,159 @@ class _HomePageState extends State<HomePage> {
 
   @override
   Widget build(BuildContext context) {
-    return WillPopScope(
-      onWillPop: () async {
-        if (Platform.isAndroid) {
-          if (Navigator.of(context).canPop()) {
-            return true;
-          } else {
-            _androidAppRetain.invokeMethod("sendToBackground");
-            return false;
+    return FutureBuilder<SharedPreferences>(
+        future: _prefs,
+        builder: (context, snapshot) {
+          if (!snapshot.hasData) {
+            return Center(
+              child: CircularProgressIndicator(),
+            );
           }
-        } else {
-          return true;
-        }
-      },
-      child: Scaffold(
-        appBar: AppBar(
-          title: const Text("Rhasspy"),
-          actions: <Widget>[
-            IconButton(
-              icon: const Icon(Icons.settings),
-              onPressed: () {
-                Navigator.pushNamed(context, AppSettings.routeName)
-                    .then((value) {
-                  _setupMqtt();
-                  _setup();
-                });
-              },
-            )
-          ],
-        ),
-        body: SingleChildScrollView(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Center(
-                  // child: IconButton(
-                  //   color: micColor,
-                  //   icon: const Icon(Icons.mic),
-                  //   onPressed: () async {
-                  //     _onPressedMic();
-                  //   },
-                  //   iconSize: MediaQuery.of(context).size.width / 1.7,
-                  // ),
-                  child: Container(
-                    margin: EdgeInsets.all(16),
-                    child: ElevatedButton(
-                      onPressed: _onPressedMic,
-                      child: Icon(
-                        Icons.mic,
-                        size: MediaQuery.of(context).size.width / 2.5,
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        primary: micColor,
-                        minimumSize: Size(240, 240),
-                        shape: CircleBorder(),
-                      ),
-                    ),
-                  ),
-                ),
-                FutureBuilder<bool>(future: () async {
-                  final prefs = await _prefs;
-                  return prefs.getBool("show_tts") ?? false;
-                }(), builder: (context, snapshot) {
-                  if (!snapshot.data) return Container();
-                  return SwitchListTile(
-                    contentPadding: EdgeInsets.zero,
-                    dense: true,
-                    title: Text("Text to Speech"),
-                    value: textToSpeech,
-                    onChanged: (bool value) {
-                      setState(() {
-                        textToSpeech = value;
+          return WillPopScope(
+            onWillPop: () async {
+              if (Platform.isAndroid) {
+                if (Navigator.of(context).canPop()) {
+                  return true;
+                } else {
+                  _androidAppRetain.invokeMethod("sendToBackground");
+                  return false;
+                }
+              } else {
+                return true;
+              }
+            },
+            child: Scaffold(
+              appBar: AppBar(
+                title: const Text("Rhasspy"),
+                actions: [
+                  IconButton(
+                    icon: const Icon(Icons.settings),
+                    onPressed: () {
+                      Navigator.pushNamed(context, AppSettings.routeName)
+                          .then((value) {
+                        _setupMqtt();
+                        _setup();
+
+                        // Re-render screen
+                        setState(() {});
                       });
                     },
-                  );
-                }),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  // crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Expanded(
-                      flex: 30,
-                      child: TextField(
-                        keyboardType: TextInputType.multiline,
-                        maxLines: null,
-                        controller: textEditingController,
-                        decoration: const InputDecoration(
-                          labelText: "Text to Intent",
-                          hintText: "Example: turn off the light",
-                          border: const OutlineInputBorder(),
+                  )
+                ],
+              ),
+              body: Container(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    mainAxisSize: MainAxisSize.max,
+                    children: [
+                      Center(
+                        child: Container(
+                          margin: EdgeInsets.all(16),
+                          child: ElevatedButton(
+                            onPressed: _onPressedMic,
+                            child: Icon(
+                              Icons.mic,
+                              size: MediaQuery.of(context).size.width / 2.5,
+                            ),
+                            style: ElevatedButton.styleFrom(
+                              primary: micColor,
+                              minimumSize: Size(240, 240),
+                              shape: CircleBorder(),
+                            ),
+                          ),
                         ),
-                        onTap: () {
-                          // Toggles focus on the TextField
-                          // You'd think it would not allow
-                          // it to be focused, but apparently
-                          // it just toggles it
-                          FocusScope.of(context).unfocus();
-                        },
                       ),
-                    ),
-                    Spacer(),
-                    IconButton(
-                      onPressed: _sendText,
-                      icon: const Icon(Icons.send, size: 32),
-                    ),
-                  ],
+                      Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (snapshot.data.getBool("show_tts") ?? false)
+                            SwitchListTile(
+                              contentPadding: EdgeInsets.zero,
+                              dense: true,
+                              title: Text("Text to Speech"),
+                              value: textToSpeech,
+                              onChanged: (bool value) {
+                                setState(() {
+                                  textToSpeech = value;
+                                });
+                              },
+                            ),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            // crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Expanded(
+                                flex: 30,
+                                child: TextField(
+                                  keyboardType: TextInputType.multiline,
+                                  maxLines: null,
+                                  controller: textEditingController,
+                                  decoration: const InputDecoration(
+                                    labelText: "Text to Intent",
+                                    hintText: "Example: turn off the light",
+                                    border: const OutlineInputBorder(),
+                                  ),
+                                  onTap: () {
+                                    // Toggles focus on the TextField
+                                    // You'd think it would not allow
+                                    // it to be focused, but apparently
+                                    // it just toggles it
+                                    FocusScope.of(context).unfocus();
+                                  },
+                                ),
+                              ),
+                              Spacer(),
+                              IconButton(
+                                onPressed: _sendText,
+                                icon: const Icon(Icons.send, size: 32),
+                              ),
+                            ],
+                          ),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              ElevatedButton.icon(
+                                onPressed: _selectAudioFile,
+                                icon: const Icon(Icons.upload_file, size: 16),
+                                label: const Text("From Audio File"),
+                              ),
+                              ElevatedButton.icon(
+                                onPressed: () async {
+                                  Directory appDocDirectory =
+                                      await getApplicationDocumentsDirectory();
+                                  String pathFile = appDocDirectory.path +
+                                      "/speech_to_text.wav";
+                                  File audioFile = File(pathFile);
+                                  if (audioFile.existsSync()) {
+                                    audioPlayer.play(audioFile.path,
+                                        isLocal: true, volume: volume);
+                                  } else {
+                                    FlushbarHelper.createError(
+                                      message:
+                                          "Record a message before playing it",
+                                    ).show(context);
+                                    log.e("Record a message before playing it",
+                                        "APP");
+                                  }
+                                },
+                                icon: const Icon(Icons.volume_up),
+                                label: const Text("Play last command"),
+                              ),
+                            ],
+                          ),
+                          if (snapshot.data.getBool("show_intent") ?? false)
+                            IntentViewer(intent)
+                        ],
+                      )
+                    ],
+                  ),
                 ),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    ElevatedButton.icon(
-                      onPressed: _selectAudioFile,
-                      icon: const Icon(Icons.upload_file, size: 16),
-                      label: const Text("From Audio File"),
-                    ),
-                    ElevatedButton.icon(
-                      onPressed: () async {
-                        Directory appDocDirectory =
-                            await getApplicationDocumentsDirectory();
-                        String pathFile =
-                            appDocDirectory.path + "/speech_to_text.wav";
-                        File audioFile = File(pathFile);
-                        if (audioFile.existsSync()) {
-                          audioPlayer.play(audioFile.path,
-                              isLocal: true, volume: volume);
-                        } else {
-                          FlushbarHelper.createError(
-                            message: "Record a message before playing it",
-                          ).show(context);
-                          log.e("Record a message before playing it", "APP");
-                        }
-                      },
-                      icon: const Icon(Icons.volume_up),
-                      label: const Text("Play last command"),
-                    ),
-                  ],
-                ),
-                FutureBuilder<bool>(future: () async {
-                  final prefs = await _prefs;
-                  return prefs.getBool("show_intent") ?? false;
-                }(), builder: (context, snapshot) {
-                  if (!snapshot.data) return Container();
-                  return IntentViewer(intent);
-                })
-              ],
+              ),
             ),
-          ),
-        ),
-      ),
-    );
+          );
+        });
   }
 
   Future<void> _selectAudioFile() async {
