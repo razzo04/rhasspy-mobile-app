@@ -13,7 +13,7 @@
 
     <application
         android:name="io.flutter.app.FlutterApplication"
-        android:label="Rhasspy mobile app"
+        android:label="Rhasspy"
         android:usesCleartextTraffic="true"
         android:icon="@mipmap/ic_launcher"
         android:allowBackup="false">
