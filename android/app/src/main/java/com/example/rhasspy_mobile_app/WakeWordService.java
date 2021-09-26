@@ -86,8 +86,8 @@ public class WakeWordService extends Service {
                 0, notificationIntent, 0);
 
         Notification notification = new NotificationCompat.Builder(this, "Wake word")
-                .setContentTitle("Wake Work")
-                .setContentText("Listening for Wake Work")
+                .setContentTitle("Wake Word")
+                .setContentText("Listening for Wake Word")
                 .setSmallIcon(R.drawable.app_icon)
                 .setContentIntent(pendingIntent)
                 .build();
