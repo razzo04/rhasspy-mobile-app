@@ -14,7 +14,7 @@ This is a simple mobile app that interfaces with rhasspy.
   - ability to transcribe audio
   - Ssl connection and possibility to set self-signed certificates
   - Support Hermes protocol
-  - Wake work over UDP
+  - Wake word over UDP
   - Android widget for listen to a command
 
 # Getting Started
